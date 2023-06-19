@@ -8,6 +8,7 @@ export default function Home() {
      <main className="flex">
       <Sidebar/>
       <Center/>
+  
      </main>
      
      <div>
