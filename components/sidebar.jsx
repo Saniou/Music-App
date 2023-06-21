@@ -7,18 +7,41 @@ import {SiGooglepodcasts} from 'react-icons/si';
 import {GoSignOut} from 'react-icons/go';
 import Playlist from './playList';
 import { signOut, useSession } from 'next-auth/react';
+import React, { useState } from 'react';
 
 const Sidebar = () => {
     
     const { data: session, status } = useSession();
-    console.log(session)
+    console.log(session + ' ' + status)  
     
+    const [sidebarWidth, setSidebarWidth] = useState(187);
+
+    const handleMouseDown = (event) => {
+      const startX = event.clientX; 
+      const startWidth = sidebarWidth;
+  
+      const handleMouseMove = (event) => {
+        const newWidth = startWidth + event.clientX - startX;
+        setSidebarWidth(Math.max(187, Math.min(300, newWidth)));
+      };
+  
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+  
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    };
     return (
     <> 
-    <div> 
-        <div className="m-5 p-2 rounded-[15px] text-sm bg-[#1f1e1e]">
-        <div className="flex p-2 cursor-pointer m-2 items-center hover:text-red-800">
-            <button className='flex' onClick={() => signOut() }>
+    <div className='overflow-y-scroll h-screen scrollbar-hide '
+     style={{ width: `${sidebarWidth}px` }}
+     onMouseDown={handleMouseDown}
+     > 
+        <div className="m-2 p-2 rounded-[15px] text-sm bg-[#1f1e1e] ">
+        <div className="flex p-2 cursor-pointer m-2 items-center  hover:text-red-800">
+            <button className='flex' onClick={() => signOut({ callbackUrl: '/login' }) }>
                 <GoSignOut size={20} className="mr-[16px] text-[#b4fc0b]"/>
                 <p>Sign Out</p>
             </button>
@@ -62,7 +85,7 @@ const Sidebar = () => {
         </div>
     </div>
 
-    <div className="m-5 p-2 rounded-[15px] text-sm bg-[#1f1e1e]">
+    <div className="m-2 rounded-[15px] text-sm bg-[#1f1e1e]">
         <Playlist/>
     </div>
 
