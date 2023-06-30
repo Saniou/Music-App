@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['i.scdn.co', 'thisis-images.scdn.co', 'seeded-session-images.scdn.co'],
+    domains: ['i.scdn.co', 'thisis-images.scdn.co', 'seeded-session-images.scdn.co', 'seed-mix-image.spotifycdn.com', 'dailymix-images.scdn.co'],
   },
   async headers() {
     return [
