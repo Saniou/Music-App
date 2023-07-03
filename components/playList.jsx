@@ -27,9 +27,9 @@ const Playlist = () => {
   return (
     <div className="items-center w-[400px]">
       {playlist.map((playlist, index) => (
-        <div className="p-2" key={index}>
+        <div key={index}>
           <div
-            className="flex ml-2 items-center cursor-pointer hover:opacity-60"
+            className="flex p-2 items-center cursor-pointer hover:opacity-60"
             onClick={() => handlePlaylistClick(playlist.id)}
           >
             <div className="flex items-center">

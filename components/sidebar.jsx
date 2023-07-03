@@ -1,3 +1,4 @@
+import React from 'react';
 import { AiFillHome, AiTwotoneFire } from "react-icons/ai";
 import { MdFavorite } from "react-icons/md";
 import { ImSearch } from "react-icons/im";
@@ -6,66 +7,67 @@ import { SiGooglepodcasts } from "react-icons/si";
 import { GoSignOut } from "react-icons/go";
 import Playlist from "./Playlist";
 import { signOut, useSession } from "next-auth/react";
-import React from "react";
+import 'bootstrap/dist/css/bootstrap.min.css';
 
-const Sidebar = () => {
+const SideBar = () => {
+  
   const { data: session, status } = useSession();
-
-  return (
-    <>
-      <div className="overflow-y-scroll h-screen scrollbar-hide w-[400px]">
-        <div className="m-2 p-2 rounded-[15px] text-sm bg-[#1f1e1e]">
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-red-800">
-            <button className="flex" onClick={() => signOut({ callbackUrl: "/login" })}>
+  
+  return ( 
+    <div>
+    <div className="ml-1 rounded-xl mr-2 d-flex flex-column flex-shrink-0 p-3 text-bg-dark overflow-y-scroll h-screen scrollbar-hide bg-[#1f1e1e]" style={{ width: '280px', background: '#1f1e1e' }}>
+      <ul className="nav nav-pills flex-column mb-auto m-2">
+      <li className="nav-item">
+            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none" onClick={() => signOut({ callbackUrl: "/login" })}>
               <GoSignOut size={20} className="mr-[16px] text-[#b4fc0b]" />
               <p className="hidden sm:inline">Sign Out</p>
             </button>
-          </div>
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
-              <AiFillHome size={20} className="mr-[16px] text-[green]" />
-              <p className="hidden sm:inline">Home</p>
-            </button>
-          </div>
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
+        </li>
+        <li className="nav-item">
+            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none ">
+               <AiFillHome size={20} className="mr-[16px] text-[green]" />
+               <p className="hidden sm:inline">Home</p>
+             </button>
+        </li>
+        <li>
+        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
               <AiTwotoneFire className="h-5 w-5 mr-[16px] text-[#d3622e]" />
               <p className="hidden sm:inline">Trending</p>
             </button>
-          </div>
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
+        </li>
+        <li>
+        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
               <MdFavorite size={20} className="mr-[16px] text-[red]" />
               <p className="hidden sm:inline">Following</p>
-            </button>
-          </div>
-          <hr className="border-t-[0.1px] border-gray-600" />
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
+          </button>
+        </li>
+        <li>
+        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
               <ImSearch size={20} className="mr-[16px] text-[cyan]" />
               <p className="hidden sm:inline">Search</p>
             </button>
-          </div>
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
+        </li>
+        <hr className="border-t-[0.1px] border-gray-600"/>
+        <li className="">
+        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
               <IoIosCreate size={20} className="mr-[16px] text-lime-50" />
               <p className="hidden sm:inline">Create Playlist</p>
             </button>
-          </div>
-          <div className="flex p-2 cursor-pointer m-2 items-center hover:text-[#5C67DE]">
-            <button className="flex">
+        </li>
+        <li>
+        <button className="flex center mb-md-0 me-md-auto text-white text-decoration-none">
               <SiGooglepodcasts size={20} className="mr-[16px] text-blue-700" />
               <p className="hidden sm:inline">Your Episode</p>
             </button>
+        </li>
+      </ul>
+      <hr className="border-t-[0.1px] border-gray-600"/>
+          <div className="">
+                <Playlist/>
           </div>
-        </div>
-
-        <div className="m-2 rounded-[15px] text-sm bg-[#1f1e1e]">
-          <Playlist />
-        </div>
-      </div>
-    </>
+    </div>
+    </div>
   );
-};
-
-export default Sidebar;
+}
+ 
+export default SideBar;
