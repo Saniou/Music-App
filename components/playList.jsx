@@ -25,7 +25,7 @@ const Playlist = () => {
   };
 
   return (
-    <div className="items-center w-[400px]">
+    <div className="items-center w-[350px]">
       {playlist.map((playlist, index) => (
         <div key={index}>
           <div

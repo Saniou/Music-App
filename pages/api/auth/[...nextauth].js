@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import SpotifyProvider from "next-auth/providers/spotify";
-import spotifyApi from "@/lib/spotify";
-import { LOGIN_URL } from "@/lib/spotify";
+import { spotifyApi,  LOGIN_URL } from "@/lib/spotify";
 
 async function refreshAccessToken(token) {
   try {
@@ -27,7 +26,6 @@ async function refreshAccessToken(token) {
 }
 
 export default NextAuth({
-  // Configure one or more authentication providers
   providers: [
     SpotifyProvider({
       clientId: process.env.NEXT_PUBLIC_CLIENT_ID,

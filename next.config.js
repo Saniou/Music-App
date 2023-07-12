@@ -11,7 +11,7 @@ const nextConfig = {
         headers: [
           {
             key: 'middleware',
-            value: '_middleware.js',
+            value: '/middleware/middleware.js',
           },
         ],
       },
