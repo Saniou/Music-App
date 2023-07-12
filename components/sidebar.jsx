@@ -5,17 +5,16 @@ import { ImSearch } from "react-icons/im";
 import { IoIosCreate } from "react-icons/io";
 import { SiGooglepodcasts } from "react-icons/si";
 import { GoSignOut } from "react-icons/go";
-import Playlist from "./Playlist";
+import Playlist from "./playList";
 import { signOut, useSession } from "next-auth/react";
 import 'bootstrap/dist/css/bootstrap.min.css';
+import Link from 'next/link';
 
 const SideBar = () => {
   
-  const { data: session, status } = useSession();
-  
   return ( 
     <div>
-    <div className="ml-1 rounded-xl mr-2 d-flex flex-column flex-shrink-0 p-3 text-bg-dark overflow-y-scroll h-screen scrollbar-hide bg-[#1f1e1e]" style={{ width: '280px', background: '#1f1e1e' }}>
+    <div className="ml-1 rounded-xl mr-2 d-flex flex-column flex-shrink-0 p-3 text-bg-dark overflow-y-scroll h-screen scrollbar-hide bg-[#1f1e1e] pb-36" style={{ width: '280px', background: '#1f1e1e' }}>
       <ul className="nav nav-pills flex-column mb-auto m-2">
       <li className="nav-item">
             <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none" onClick={() => signOut({ callbackUrl: "/login" })}>
@@ -24,10 +23,10 @@ const SideBar = () => {
             </button>
         </li>
         <li className="nav-item">
-            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none ">
+            <Link  href="/" className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none ">
                <AiFillHome size={20} className="mr-[16px] text-[green]" />
-               <p className="hidden sm:inline">Home</p>
-             </button>
+               <p className="hidden sm:inline">Homelander</p>
+             </Link>
         </li>
         <li>
         <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">

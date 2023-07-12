@@ -22,3 +22,9 @@ body {
   background: linear-gradient(0deg, rgba(10, 10, 10, 0.2), rgba(10, 10, 10, 0.2)), linear-gradient(131.55deg, #1B1B1B 0%, #14151F 88.91%);
   border-radius: 20px;
 }
+
+@layer components {
+  .button {
+  @apply h-5 w-5 cursor-pointer hover:scale-125 transition transform  duration-100 ease-out 
+  }
+}
