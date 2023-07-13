@@ -17,7 +17,7 @@ const SideBar = () => {
     <div className="ml-1 rounded-xl w-[50px] lg:w-[220px] md:w-[210px] sm:w-[70px] mr-2 flex flex-column flex-shrink-0 p-3 text-bg-dark overflow-y-scroll h-screen scrollbar-hide pb-36 bg-[#1f1e1e]">
       <ul className="text-none lg:text-[14px] md:text-[12px] sm:text-[8px] nav nav-pills flex-column mb-auto m-2">
       <li className="nav-item">
-            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none" onClick={() => signOut({ callbackUrl: "/" })}>
+            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none" onClick={() => signOut({ callbackUrl: "/login" })}>
               <GoSignOut size={20} className="mr-[16px] text-[#b4fc0b]" />
               <p className="hidden md:inline sm:hidden">Sign Out</p>
             </button>
