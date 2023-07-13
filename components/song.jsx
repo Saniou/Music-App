@@ -45,7 +45,7 @@ const Song = ({track, order}) => {
         </div>
   
         <div className="w-[50%] text-white">
-          <p className="text-sm leading-6">{truncateText(track.track.album.name, 7)}</p>
+          <p className="text-sm leading-6 hidden sm:inline">{truncateText(track.track.album.name, 7)}</p>
         </div>
   
         <div className="hidden sm:flex sm:flex-col sm:items-end text-white">

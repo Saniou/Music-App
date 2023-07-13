@@ -25,7 +25,7 @@ const Playlist = () => {
   };
 
   return (
-    <div className="items-center w-[350px]">
+    <div className="items-center mb-[90px]">
       {playlist.map((playlist, index) => (
         <div key={index}>
           <div
@@ -35,14 +35,14 @@ const Playlist = () => {
             <div className="flex items-center">
               <div className="relative w-10 h-10">
                 <Image
-                  className="object-cover w-10 h-10"
+                  className="object-cover w-10 h-10 sm:pr-2"
                   src={playlist.images[0]?.url}
                   width={100}
                   height={100}
                   alt="Playlist Image"
                 />
               </div>
-              <p className="text-[12px] sm:text-[10px] hidden sm:inline pl-3">
+              <p className="text-[8px] lg:text-[10px] md:text-[8px] sm:text-[6px] pl-3 hidden md:inline sm:hidden">
                 {playlist.name}
               </p>
             </div>
