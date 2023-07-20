@@ -4,6 +4,7 @@ import Center from "@/components/center"
 import { getSession } from "next-auth/react"
 import Player from "@/components/player"
 
+
 export default function Home() {
   return (
     <div className='h-screen overflow-hidden'>
