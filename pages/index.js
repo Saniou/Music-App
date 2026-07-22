@@ -1,7 +1,8 @@
 import React from "react"
 import Sidebar from "@/components/sidebar"
 import Center from "@/components/center"
-import { getSession } from "next-auth/react"
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/pages/api/auth/[...nextauth]"
 import Player from "@/components/player"
 
 
@@ -24,7 +25,9 @@ export default function Home() {
 }
 
 export async function getServerSideProps(context) {
-  const session = await getSession(context)
+  // getServerSession reads the cookie directly (no internal fetch), which is
+  // reliable on serverless — unlike getSession from next-auth/react.
+  const session = await getServerSession(context.req, context.res, authOptions)
 
   // Gate the app: send unauthenticated visitors to the login page.
   if (!session) {
