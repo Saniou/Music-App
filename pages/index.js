@@ -25,9 +25,20 @@ export default function Home() {
 
 export async function getServerSideProps(context) {
   const session = await getSession(context)
-  return{
-    props: {
-      session
+
+  // Gate the app: send unauthenticated visitors to the login page.
+  if (!session) {
+    return {
+      redirect: {
+        destination: "/login",
+        permanent: false,
+      },
     }
+  }
+
+  return {
+    props: {
+      session,
+    },
   }
 }

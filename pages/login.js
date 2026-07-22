@@ -1,38 +1,20 @@
-import { getProviders, signIn } from "next-auth/react";
-import Image from "next/image";
+import { signIn } from "next-auth/react";
+import { FaSpotify } from "react-icons/fa";
 
-const Login = ({ providers }) => {
+const Login = () => {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-black ">
-      <Image
-        className="w-32 mb-5"
-        src="/./fPuEa9V.png"
-        alt="Spotify"
-        width={100}
-        height={100}
-      />
-
-      {Object.values(providers).map((provider) => (
-        <div key={provider.id}>
-          <button
-            className="w-[180px] h-[50px] bg-[#18D860] rounded-full text-white"
-            onClick={() => signIn(provider.id, { callbackUrl: "/" })}
-          >
-            Login with {provider.name}
-          </button>
-        </div>
-      ))}
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#1e1e1e] to-black text-white">
+      <FaSpotify className="mb-6 h-24 w-24 text-[#1DB954]" />
+      <h1 className="mb-8 text-2xl font-bold">Musify</h1>
+      <button
+        className="flex h-[50px] w-[220px] items-center justify-center gap-2 rounded-full bg-[#1DB954] font-semibold text-black transition hover:scale-105 hover:bg-[#1ed760]"
+        onClick={() => signIn("spotify", { callbackUrl: "/" })}
+      >
+        <FaSpotify className="h-5 w-5" />
+        Login with Spotify
+      </button>
     </div>
   );
 };
 
 export default Login;
-
-export async function getServerSideProps() {
-  const providers = await getProviders();
-  return {
-    props: {
-      providers,
-    },
-  };
-}
