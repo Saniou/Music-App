@@ -8,6 +8,16 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['Poppins', 'system-ui', 'sans-serif'],
+        script: ['"Dancing Script"', 'cursive'],
+      },
+      keyframes: {
+        spinSlow: {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(360deg)' },
+        },
+      },
+      animation: {
+        'spin-slow': 'spinSlow 8s linear infinite',
       },
       colors: {
         base: '#0a0a0b',
