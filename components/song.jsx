@@ -7,52 +7,63 @@ import { formatDuration } from "@/lib/duration";
 import { truncateText } from "@/lib/truncate";
 import { currentTrackIdState, isPlayingState } from "@/atoms/songAtom";
 
-const Song = ({track, order}) => {
-    
-    const spotifyApi = useSpotify()
-    
-    const [currentTrackId, setCurrentTrackId] = useRecoilState(currentTrackIdState)
-    
-    const [isPlaying, setIsPlaying] = useRecoilState(isPlayingState)
-    
-    const playSong = () => {
-      setCurrentTrackId(track.track.id)
-      setIsPlaying(true)
-      spotifyApi.play({
-        uris: [track.track.uri],
-        
-      })
-    }
-    
-    return (
-      <div key={track.track.id} className="flex rounded-2xl items-center p-5 mr-8 py-2 hover:bg-[#000] hover:transition-[0.5s] hover:-translate-y-1 hover:scale-30">
-        <div className="flex items-center text-white w-3/4">
-          <p className="pr-4 mt-3">{order + 1}</p>
-          <button className="ml-5 cursor-pointer" onClick={playSong}>
-            <BsFillPlayFill className="w-8 h-8 mr-5 text-white hover:bg-[#5C67DE] rounded-full hover:scale-110 transition duration-200" />
-          </button>
+const Song = ({ track, order }) => {
+  const spotifyApi = useSpotify();
+  const [currentTrackId, setCurrentTrackId] = useRecoilState(currentTrackIdState);
+  const setIsPlaying = useRecoilState(isPlayingState)[1];
+
+  const song = track?.track;
+  const isActive = currentTrackId === song?.id;
+
+  const playSong = () => {
+    if (!song) return;
+    setCurrentTrackId(song.id);
+    setIsPlaying(true);
+    spotifyApi.play({ uris: [song.uri] }).catch((e) => console.error("Play failed", e));
+  };
+
+  if (!song) return null;
+
+  return (
+    <div
+      onClick={playSong}
+      className={`group flex cursor-pointer items-center rounded-2xl p-5 py-2 mr-8 transition duration-300 hover:bg-black/60 hover:-translate-y-0.5 ${
+        isActive ? "bg-black/40" : ""
+      }`}
+    >
+      <div className="flex w-3/4 items-center text-white">
+        <p className={`pr-4 ${isActive ? "text-green-500" : ""}`}>{order + 1}</p>
+        <button className="ml-5" onClick={(e) => { e.stopPropagation(); playSong(); }} aria-label={`Play ${song.name}`}>
+          <BsFillPlayFill className="mr-5 h-8 w-8 rounded-full text-white transition duration-200 hover:scale-110 hover:bg-[#5C67DE]" />
+        </button>
+        {song.album?.images?.[0]?.url && (
           <Image
-            className="object-cover w-10 h-10 mr-4"
-            src={track.track.album.images[0].url}
-            alt="Track Image"
-            width={250}
-            height={250}
+            className="mr-4 h-10 w-10 object-cover"
+            src={song.album.images[0].url}
+            alt={song.album?.name ?? "Album art"}
+            width={40}
+            height={40}
           />
-          <div className="flex text-white flex-col">
-            <p className="text-sm font-semibold leading-6">{truncateText(track.track.name, 3)}</p>
-            <p className="text-xs leading-5 text-gray-500">{track.track.artists[0].name}</p>
-          </div>
-        </div>
-  
-        <div className="w-[50%] text-white">
-          <p className="text-sm leading-6 hidden sm:inline">{truncateText(track.track.album.name, 7)}</p>
-        </div>
-  
-        <div className="hidden sm:flex sm:flex-col sm:items-end text-white">
-          <p className="text-sm leading-6">{formatDuration(track.track.duration_ms)}</p>
+        )}
+        <div className="flex flex-col text-white">
+          <p className={`text-sm font-semibold leading-6 ${isActive ? "text-green-500" : ""}`}>
+            {truncateText(song.name, 3)}
+          </p>
+          <p className="text-xs leading-5 text-gray-500">{song.artists?.[0]?.name}</p>
         </div>
       </div>
-    );
-  };
-  
-  export default Song;
+
+      <div className="w-1/2 text-white">
+        <p className="hidden text-sm leading-6 sm:inline">
+          {truncateText(song.album?.name ?? "", 7)}
+        </p>
+      </div>
+
+      <div className="hidden text-white sm:flex sm:flex-col sm:items-end">
+        <p className="text-sm leading-6">{formatDuration(song.duration_ms)}</p>
+      </div>
+    </div>
+  );
+};
+
+export default Song;

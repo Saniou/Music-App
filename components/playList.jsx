@@ -26,26 +26,29 @@ const Playlist = () => {
 
   return (
     <div className="items-center mb-[90px]">
-      {playlist.map((playlist, index) => (
-        <div key={index}>
-          <div
-            className="flex p-2 items-center cursor-pointer hover:opacity-60"
-            onClick={() => handlePlaylistClick(playlist.id)}
-          >
-            <div className="flex items-center">
-              <div className="relative w-10 h-10">
+      {playlist.map((item) => (
+        <div
+          key={item.id}
+          className={`flex cursor-pointer items-center p-2 transition hover:opacity-60 ${
+            playlistId === item.id ? "opacity-100" : "opacity-80"
+          }`}
+          onClick={() => handlePlaylistClick(item.id)}
+        >
+          <div className="flex items-center">
+            <div className="relative h-10 w-10">
+              {item.images?.[0]?.url && (
                 <Image
-                  className="object-cover w-10 h-10 sm:pr-2"
-                  src={playlist.images[0]?.url}
-                  width={100}
-                  height={100}
-                  alt="Playlist Image"
+                  className="h-10 w-10 object-cover sm:pr-2"
+                  src={item.images[0].url}
+                  width={40}
+                  height={40}
+                  alt={item.name ?? "Playlist"}
                 />
-              </div>
-              <p className="text-[8px] lg:text-[10px] md:text-[8px] sm:text-[6px] pl-3 hidden md:inline sm:hidden">
-                {playlist.name}
-              </p>
+              )}
             </div>
+            <p className="hidden pl-3 text-[8px] md:inline lg:text-[10px] md:text-[8px]">
+              {item.name}
+            </p>
           </div>
         </div>
       ))}

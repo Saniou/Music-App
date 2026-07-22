@@ -7,12 +7,14 @@ const Songs = () => {
   const playlist = useRecoilValue(playlistState);
 
   return (
-    <ul>
-      {playlist?.tracks.items.map((track, order) => (
-        <li key={track.track.id}>
-          <Song track={track} order={order} />
-        </li>
-      ))}
+    <ul className="pb-28">
+      {playlist?.tracks?.items
+        ?.filter((item) => item?.track)
+        .map((track, order) => (
+          <li key={`${track.track.id}-${order}`}>
+            <Song track={track} order={order} />
+          </li>
+        ))}
     </ul>
   );
 };

@@ -27,19 +27,21 @@ const ModalWindow = () => {
             style={{ background: "black", width: "50%" }}
             className="space-x-3 items-center flex rounded-full"
           >
-            <Image
-              className="rounded-full w-[25%]"
-              width={20}
-              height={20}
-              src={session?.user.image}
-              alt="img"
-              style={{
-                objectFit: "cover",
-                objectPosition: "center",
-                width: "25px",
-                height: "25px",
-              }}
-            />
+            {session?.user?.image && (
+              <Image
+                className="rounded-full w-[25%]"
+                width={25}
+                height={25}
+                src={session.user.image}
+                alt="Profile"
+                style={{
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  width: "25px",
+                  height: "25px",
+                }}
+              />
+            )}
             <strong className="me-auto text-white">{session?.user.name}</strong>
             <button>
               <MdOutlineKeyboardArrowDown className="text-white" size={25} />

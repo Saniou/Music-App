@@ -5,20 +5,10 @@ const nextConfig = {
     forceSwcTransforms: true,
   },
   images: {
-    domains: ['i.scdn.co', 'thisis-images.scdn.co', 'seeded-session-images.scdn.co', 'seed-mix-image.spotifycdn.com', 'dailymix-images.scdn.co', 'mosaic.scdn.co', 'images-ak.spotifycdn.com'],
-  },
-  async headers() {
-    return [
-      {
-        source: '/',
-        headers: [
-          {
-            key: 'middleware',
-            value: '/middleware.js',
-          },
-        ],
-      },
-    ];
+    remotePatterns: [
+      { protocol: 'https', hostname: '**.scdn.co' },
+      { protocol: 'https', hostname: '**.spotifycdn.com' },
+    ],
   },
 };
 
