@@ -1,58 +1,65 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import useSpotify from "@/hooks/useSpotify";
 import Image from "next/image";
-import { playlistIdState } from "@/atoms/playlistAtoms";
 import { useRecoilState } from "recoil";
+import { playlistIdState } from "@/atoms/playlistAtoms";
+import useSpotify from "@/hooks/useSpotify";
 
 const Playlist = () => {
   const spotifyApi = useSpotify();
-  const [playlist, setPlaylist] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
   const [playlistId, setPlaylistId] = useRecoilState(playlistIdState);
-
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (spotifyApi.getAccessToken()) {
-      spotifyApi.getUserPlaylists().then((data) => {
-        setPlaylist(data.body.items);
-      });
-    }
+    if (!spotifyApi.getAccessToken()) return;
+    spotifyApi
+      .getUserPlaylists({ limit: 50 })
+      .then((data) => setPlaylists(data.body.items))
+      .catch((e) => console.error("Failed to load playlists", e));
   }, [session, spotifyApi]);
 
-  const handlePlaylistClick = (playlistId) => {
-    setPlaylistId(playlistId);
-  };
-
   return (
-    <div className="items-center mb-[90px]">
-      {playlist.map((item) => (
-        <div
-          key={item.id}
-          className={`flex cursor-pointer items-center p-2 transition hover:opacity-60 ${
-            playlistId === item.id ? "opacity-100" : "opacity-80"
-          }`}
-          onClick={() => handlePlaylistClick(item.id)}
-        >
-          <div className="flex items-center">
-            <div className="relative h-10 w-10">
-              {item.images?.[0]?.url && (
-                <Image
-                  className="h-10 w-10 object-cover sm:pr-2"
-                  src={item.images[0].url}
-                  width={40}
-                  height={40}
-                  alt={item.name ?? "Playlist"}
-                />
-              )}
-            </div>
-            <p className="hidden pl-3 text-[8px] md:inline lg:text-[10px] md:text-[8px]">
-              {item.name}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
+    <ul className="space-y-1">
+      {playlists.map((playlist) => {
+        const isActive = playlistId === playlist.id;
+        const cover = playlist.images?.[0]?.url;
+        return (
+          <li key={playlist.id}>
+            <button
+              onClick={() => setPlaylistId(playlist.id)}
+              className={`flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors duration-200 ${
+                isActive ? "bg-hover" : "hover:bg-elevated"
+              }`}
+            >
+              <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded bg-elevated">
+                {cover && (
+                  <Image
+                    src={cover}
+                    alt={playlist.name}
+                    fill
+                    sizes="44px"
+                    className="object-cover"
+                  />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p
+                  className={`truncate text-sm font-medium ${
+                    isActive ? "text-spotify" : "text-white"
+                  }`}
+                >
+                  {playlist.name}
+                </p>
+                <p className="truncate text-xs text-gray-400">
+                  Playlist · {playlist.tracks?.total ?? 0} songs
+                </p>
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
 

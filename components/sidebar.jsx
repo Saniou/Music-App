@@ -1,72 +1,78 @@
-import React from 'react';
-import { AiFillHome, AiTwotoneFire } from "react-icons/ai";
-import { MdFavorite } from "react-icons/md";
-import { ImSearch } from "react-icons/im";
-import { IoIosCreate } from "react-icons/io";
-import { SiGooglepodcasts } from "react-icons/si";
-import { GoSignOut } from "react-icons/go";
-import Playlist from "./playList";
 import { signOut } from "next-auth/react";
-import 'bootstrap/dist/css/bootstrap.min.css';
-import Link from 'next/link';
+import { FaSpotify } from "react-icons/fa";
+import {
+  FiHome,
+  FiSearch,
+  FiTrendingUp,
+  FiHeart,
+  FiPlusSquare,
+  FiLogOut,
+} from "react-icons/fi";
+import Playlist from "./playList";
 
-const SideBar = () => {
-  
-  return ( 
-    <div className=''>
-    <div className="ml-1 rounded-xl w-[50px] lg:w-[220px] md:w-[210px] sm:w-[70px] mr-2 flex flex-column flex-shrink-0 p-3 text-bg-dark overflow-y-scroll h-screen scrollbar-hide pb-36 bg-[#1f1e1e]">
-      <ul className="text-none lg:text-[14px] md:text-[12px] sm:text-[8px] nav nav-pills flex-column mb-auto m-2">
-      <li className="nav-item">
-            <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none" onClick={() => signOut({ callbackUrl: "/login" })}>
-              <GoSignOut size={20} className="mr-[16px] text-[#b4fc0b]" />
-              <p className="hidden md:inline sm:hidden">Sign Out</p>
-            </button>
-        </li>
-        <li className="nav-item">
-            <Link  href="/" className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none ">
-               <AiFillHome size={20} className="mr-[16px] text-[green]" />
-               <p className="hidden md:inline sm:hidden">Home</p>
-             </Link>
-        </li>
-        <li>
-        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
-              <AiTwotoneFire className="h-5 w-5 mr-[16px] text-[#d3622e]" />
-              <p className="hidden md:inline sm:hidden">Trending</p>
-            </button>
-        </li>
-        <li>
-        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
-              <MdFavorite size={20} className="mr-[16px] text-[red]" />
-              <p className="hidden md:inline sm:hidden">Following</p>
+const navItems = [
+  { label: "Home", icon: FiHome, active: true },
+  { label: "Search", icon: FiSearch },
+  { label: "Trending", icon: FiTrendingUp },
+  { label: "Following", icon: FiHeart },
+];
+
+const Sidebar = () => {
+  return (
+    <aside className="hidden w-[240px] flex-shrink-0 flex-col gap-2 sm:flex lg:w-[280px]">
+      {/* Top nav card */}
+      <nav className="rounded-lg bg-panel p-4">
+        <div className="mb-6 flex items-center gap-2 px-2">
+          <FaSpotify className="h-7 w-7 text-spotify" />
+          <span className="text-lg font-bold tracking-tight">Musify</span>
+        </div>
+        <ul className="space-y-1">
+          {navItems.map(({ label, icon: Icon, active }) => (
+            <li key={label}>
+              <button
+                className={`flex w-full items-center gap-4 rounded-md px-2 py-2 text-sm font-semibold transition-colors duration-200 ${
+                  active
+                    ? "text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* Library card */}
+      <div className="flex flex-1 flex-col overflow-hidden rounded-lg bg-panel">
+        <div className="flex items-center justify-between px-4 py-4">
+          <span className="text-sm font-bold text-gray-300">Your Library</span>
+          <button
+            className="icon-btn"
+            aria-label="Create playlist"
+            title="Create playlist"
+          >
+            <FiPlusSquare className="h-5 w-5" />
           </button>
-        </li>
-        <li>
-        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
-              <ImSearch size={20} className="mr-[16px] text-[cyan]" />
-              <p className="hidden md:inline sm:hidden">Search</p>
-            </button>
-        </li>
-        <hr className="border-t-[0.1px] border-gray-600"/>
-        <li className="">
-        <button className="flex center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
-              <IoIosCreate size={20} className="mr-[16px] text-lime-50" />
-              <p className="hidden md:inline sm:hidden">Create Playlist</p>
-            </button>
-        </li>
-        <li>
-        <button className="flex center mb-md-0 me-md-auto text-white text-decoration-none">
-              <SiGooglepodcasts size={20} className="mr-[16px] text-blue-700" />
-              <p className="hidden md:inline sm:hidden">Your Episode</p>
-            </button>
-        </li>
-      </ul>
-      <hr className="border-t-[0.1px] border-gray-600"/>
-          <div>
-                <Playlist/>
-          </div>
-    </div>
-    </div>
+        </div>
+
+        <div className="scroll-thin flex-1 overflow-y-auto px-2 pb-2">
+          <Playlist />
+        </div>
+
+        <div className="border-t border-white/5 p-3">
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm font-semibold text-gray-400 transition-colors duration-200 hover:text-white"
+          >
+            <FiLogOut className="h-5 w-5" />
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </aside>
   );
-}
- 
-export default SideBar;
+};
+
+export default Sidebar;

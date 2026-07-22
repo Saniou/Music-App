@@ -1,47 +1,29 @@
-import React from "react"
-import Sidebar from "@/components/sidebar"
-import Center from "@/components/center"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/pages/api/auth/[...nextauth]"
-import Player from "@/components/player"
-
+import Sidebar from "@/components/sidebar";
+import Center from "@/components/center";
+import Player from "@/components/player";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/pages/api/auth/[...nextauth]";
 
 export default function Home() {
   return (
-    <div className='h-screen overflow-hidden'>
-     <main className="flex">
-
-      <Sidebar/>
-      <Center/>
-
-     </main>
-     
-     <div className="sticky bottom-0">
-      <Player/>
-      </div>
-     
+    <div className="flex h-screen flex-col bg-base text-white">
+      <main className="flex flex-1 gap-2 overflow-hidden p-2">
+        <Sidebar />
+        <Center />
+      </main>
+      <Player />
     </div>
-  )
+  );
 }
 
 export async function getServerSideProps(context) {
-  // getServerSession reads the cookie directly (no internal fetch), which is
-  // reliable on serverless — unlike getSession from next-auth/react.
-  const session = await getServerSession(context.req, context.res, authOptions)
+  const session = await getServerSession(context.req, context.res, authOptions);
 
-  // Gate the app: send unauthenticated visitors to the login page.
   if (!session) {
     return {
-      redirect: {
-        destination: "/login",
-        permanent: false,
-      },
-    }
+      redirect: { destination: "/login", permanent: false },
+    };
   }
 
-  return {
-    props: {
-      session,
-    },
-  }
+  return { props: { session } };
 }

@@ -1,19 +1,18 @@
-import React from "react";
-import { useRecoilState } from "recoil";
 import Image from "next/image";
-import { BsFillPlayFill } from "react-icons/bs";
+import { useRecoilState } from "recoil";
+import { BsFillPlayFill, BsPauseFill } from "react-icons/bs";
 import useSpotify from "@/hooks/useSpotify";
 import { formatDuration } from "@/lib/duration";
-import { truncateText } from "@/lib/truncate";
 import { currentTrackIdState, isPlayingState } from "@/atoms/songAtom";
 
 const Song = ({ track, order }) => {
   const spotifyApi = useSpotify();
   const [currentTrackId, setCurrentTrackId] = useRecoilState(currentTrackIdState);
-  const setIsPlaying = useRecoilState(isPlayingState)[1];
+  const [isPlaying, setIsPlaying] = useRecoilState(isPlayingState);
 
   const song = track?.track;
   const isActive = currentTrackId === song?.id;
+  const cover = song?.album?.images?.[0]?.url;
 
   const playSong = () => {
     if (!song) return;
@@ -27,40 +26,45 @@ const Song = ({ track, order }) => {
   return (
     <div
       onClick={playSong}
-      className={`group flex cursor-pointer items-center rounded-2xl p-5 py-2 mr-8 transition duration-300 hover:bg-black/60 hover:-translate-y-0.5 ${
-        isActive ? "bg-black/40" : ""
-      }`}
+      className="group grid cursor-pointer grid-cols-[16px_1fr_1fr_minmax(0,80px)] items-center gap-4 rounded-md px-4 py-2 transition-colors duration-200 hover:bg-hover"
     >
-      <div className="flex w-3/4 items-center text-white">
-        <p className={`pr-4 ${isActive ? "text-green-500" : ""}`}>{order + 1}</p>
-        <button className="ml-5" onClick={(e) => { e.stopPropagation(); playSong(); }} aria-label={`Play ${song.name}`}>
-          <BsFillPlayFill className="mr-5 h-8 w-8 rounded-full text-white transition duration-200 hover:scale-110 hover:bg-[#5C67DE]" />
-        </button>
-        {song.album?.images?.[0]?.url && (
-          <Image
-            className="mr-4 h-10 w-10 object-cover"
-            src={song.album.images[0].url}
-            alt={song.album?.name ?? "Album art"}
-            width={40}
-            height={40}
-          />
-        )}
-        <div className="flex flex-col text-white">
-          <p className={`text-sm font-semibold leading-6 ${isActive ? "text-green-500" : ""}`}>
-            {truncateText(song.name, 3)}
+      {/* Index / play indicator */}
+      <div className="flex items-center justify-end text-sm text-gray-400">
+        <span className={`group-hover:hidden ${isActive ? "text-spotify" : ""}`}>
+          {isActive && isPlaying ? (
+            <BsPauseFill className="h-4 w-4 text-spotify" />
+          ) : (
+            order + 1
+          )}
+        </span>
+        <BsFillPlayFill className="hidden h-5 w-5 text-white group-hover:block" />
+      </div>
+
+      {/* Title */}
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-elevated">
+          {cover && (
+            <Image src={cover} alt={song.album?.name ?? "Album art"} fill sizes="40px" className="object-cover" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className={`truncate text-sm font-medium ${isActive ? "text-spotify" : "text-white"}`}>
+            {song.name}
           </p>
-          <p className="text-xs leading-5 text-gray-500">{song.artists?.[0]?.name}</p>
+          <p className="truncate text-xs text-gray-400">
+            {song.artists?.map((a) => a.name).join(", ")}
+          </p>
         </div>
       </div>
 
-      <div className="w-1/2 text-white">
-        <p className="hidden text-sm leading-6 sm:inline">
-          {truncateText(song.album?.name ?? "", 7)}
-        </p>
+      {/* Album */}
+      <div className="hidden min-w-0 sm:block">
+        <p className="truncate text-sm text-gray-400">{song.album?.name}</p>
       </div>
 
-      <div className="hidden text-white sm:flex sm:flex-col sm:items-end">
-        <p className="text-sm leading-6">{formatDuration(song.duration_ms)}</p>
+      {/* Duration */}
+      <div className="flex justify-end text-sm text-gray-400">
+        {formatDuration(song.duration_ms)}
       </div>
     </div>
   );
