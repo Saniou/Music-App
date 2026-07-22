@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRecoilState, useRecoilValue } from "recoil";
+import { FiAlertCircle, FiLoader } from "react-icons/fi";
 import { playlistIdState, playlistState } from "@/atoms/playlistAtoms";
 import { currentTrackIdState, isPlayingState } from "@/atoms/songAtom";
 import useSpotify from "@/hooks/useSpotify";
@@ -8,33 +9,82 @@ import Timeline from "./timeline";
 import TopBar from "./topBar";
 import PlaylistMenu from "./playlistMenu";
 
+const TRACK_LIMIT = 150; // how many tracks to page in
+
 const Experience = () => {
   const spotifyApi = useSpotify();
-  const playlistId = useRecoilValue(playlistIdState);
+  const [playlistId, setPlaylistId] = useRecoilState(playlistIdState);
   const [playlist, setPlaylist] = useRecoilState(playlistState);
   const [, setCurrentTrackId] = useRecoilState(currentTrackIdState);
   const [isPlaying, setIsPlaying] = useRecoilState(isPlayingState);
-  const [activeIndex, setActiveIndex] = useState(0);
 
-  // Load the selected playlist.
+  const [tracks, setTracks] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [status, setStatus] = useState("idle"); // idle | loading | ready | empty | error
+
+  // Auto-select the user's first playlist when nothing is chosen yet.
+  useEffect(() => {
+    if (playlistId || !spotifyApi.getAccessToken()) return;
+    spotifyApi
+      .getUserPlaylists({ limit: 50 })
+      .then((data) => {
+        const items = data.body.items ?? [];
+        // Editorial/algorithmic playlists (owner = "spotify") now serve their
+        // tracks with restrictions, so prefer a playlist the user owns.
+        const preferred =
+          items.find((p) => p.owner?.id && p.owner.id !== "spotify") ?? items[0];
+        if (preferred) setPlaylistId(preferred.id);
+        else setStatus("empty");
+      })
+      .catch((e) => console.error("Failed to load user playlists", e));
+  }, [playlistId, spotifyApi, setPlaylistId]);
+
+  // Load metadata + tracks for the selected playlist.
   useEffect(() => {
     if (!playlistId || !spotifyApi.getAccessToken()) return;
-    spotifyApi
-      .getPlaylist(playlistId)
-      .then((data) => {
-        setPlaylist(data.body);
-        setActiveIndex(0);
-      })
-      .catch((e) => console.error("Failed to load playlist", e));
-  }, [spotifyApi, playlistId, setPlaylist]);
+    let cancelled = false;
+    setStatus("loading");
+    setTracks([]);
 
-  const tracks = useMemo(
-    () =>
-      playlist?.tracks?.items
-        ?.filter((item) => item?.track?.album?.images?.length)
-        .map((item) => item.track) ?? [],
-    [playlist]
-  );
+    (async () => {
+      try {
+        const meta = await spotifyApi.getPlaylist(playlistId);
+        if (cancelled) return;
+        setPlaylist(meta.body);
+
+        // The dedicated /tracks endpoint (with market) is far more reliable
+        // than the tracks nested in getPlaylist, and lets us paginate.
+        const collected = [];
+        let offset = 0;
+        const limit = 50;
+        while (offset < TRACK_LIMIT) {
+          const res = await spotifyApi.getPlaylistTracks(playlistId, {
+            limit,
+            offset,
+            market: "from_token",
+          });
+          const items = res.body.items ?? [];
+          collected.push(...items);
+          if (items.length < limit || collected.length >= (res.body.total ?? 0)) break;
+          offset += limit;
+        }
+        if (cancelled) return;
+
+        const mapped = collected.map((i) => i.track).filter((t) => t?.id);
+        setTracks(mapped);
+        setActiveIndex(0);
+        setStatus(mapped.length ? "ready" : "empty");
+      } catch (e) {
+        if (cancelled) return;
+        console.error("Failed to load playlist tracks", e);
+        setStatus("error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playlistId, spotifyApi, setPlaylist]);
 
   const activeTrack = tracks[activeIndex] ?? null;
 
@@ -44,7 +94,6 @@ const Experience = () => {
       setCurrentTrackId(track.id);
       setIsPlaying(true);
       spotifyApi.play({ uris: [track.uri] }).catch((e) => {
-        // No active device or playback error — keep UI state, surface in console.
         console.error("Playback failed (open Spotify on a device first)", e);
       });
     },
@@ -69,20 +118,17 @@ const Experience = () => {
       if (body?.is_playing) {
         await spotifyApi.pause();
         setIsPlaying(false);
-      } else {
-        if (body?.item) {
-          await spotifyApi.play();
-        } else {
-          playTrack(activeTrack);
-        }
+      } else if (body?.item) {
+        await spotifyApi.play();
         setIsPlaying(true);
+      } else {
+        playTrack(activeTrack);
       }
     } catch (error) {
       playTrack(activeTrack);
     }
   }, [spotifyApi, setIsPlaying, playTrack, activeTrack]);
 
-  // Keyboard navigation.
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "ArrowRight") handleNext();
@@ -98,35 +144,59 @@ const Experience = () => {
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-base text-white">
-      {/* Ambient backdrop from active cover */}
       <BackdropGlow url={activeTrack?.album?.images?.[0]?.url} />
 
-      {/* Top bar */}
       <header className="relative z-20 flex items-center justify-between px-6 py-5">
         <PlaylistMenu />
-        <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-script text-4xl font-bold">
+        <h1 className="pointer-events-none absolute left-1/2 max-w-[50vw] -translate-x-1/2 truncate text-center font-script text-3xl font-bold sm:text-4xl">
           {playlist?.name ?? "Musify"}
         </h1>
         <TopBar />
       </header>
 
-      {/* Now playing */}
       <main className="relative z-10 flex flex-1 items-center justify-center px-4">
-        <NowPlaying
-          track={activeTrack}
-          isPlaying={isPlaying}
-          onPlayPause={handlePlayPause}
-          onNext={handleNext}
-          onPrev={handlePrev}
-          hasNext={activeIndex < tracks.length - 1}
-          hasPrev={activeIndex > 0}
-        />
+        {status === "ready" ? (
+          <NowPlaying
+            track={activeTrack}
+            isPlaying={isPlaying}
+            onPlayPause={handlePlayPause}
+            onNext={handleNext}
+            onPrev={handlePrev}
+            hasNext={activeIndex < tracks.length - 1}
+            hasPrev={activeIndex > 0}
+          />
+        ) : (
+          <StatusMessage status={status} />
+        )}
       </main>
 
-      {/* Timeline */}
       <footer className="relative z-10 pb-8 pt-2">
-        <Timeline tracks={tracks} activeIndex={activeIndex} onSelect={selectIndex} />
+        {status === "ready" && (
+          <Timeline tracks={tracks} activeIndex={activeIndex} onSelect={selectIndex} />
+        )}
       </footer>
+    </div>
+  );
+};
+
+const StatusMessage = ({ status }) => {
+  if (status === "loading" || status === "idle") {
+    return (
+      <div className="flex flex-col items-center gap-3 text-gray-400">
+        <FiLoader className="h-7 w-7 animate-spin" />
+        <p className="text-sm">Loading your music…</p>
+      </div>
+    );
+  }
+  const messages = {
+    empty: "This playlist has no playable tracks. Pick another from “Playlists”.",
+    error:
+      "Spotify won’t serve this playlist’s tracks (it may be an editorial or restricted playlist). Choose one of your own from “Playlists”.",
+  };
+  return (
+    <div className="flex max-w-sm flex-col items-center gap-3 text-center text-gray-400">
+      <FiAlertCircle className="h-7 w-7 text-gray-500" />
+      <p className="text-sm">{messages[status] ?? "Something went wrong."}</p>
     </div>
   );
 };
