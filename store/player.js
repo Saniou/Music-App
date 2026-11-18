@@ -462,6 +462,28 @@ export const usePlayer = create((set, get) => {
       }
     },
 
+    // Play an artist (or album) as a Spotify context: for an artist that's their popular songs, which
+    // also stands in for the top-tracks endpoint Dev Mode removed.
+    playUri: (contextUri) => {
+      const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
+      sdkPlayer?.activateElement?.();
+      return command({ isPlaying: true }, () =>
+        spotifyApi.play({ device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: contextUri })
+      );
+    },
+
+    // Artist page (full screen, over the player). Also a history entry, so the browser's Back closes it.
+    artistId: null,
+    openArtist: (artistId) => {
+      if (typeof window !== "undefined" && history.state?.artistId !== artistId)
+        history.pushState({ artistId }, "", `#artist/${artistId}`);
+      set({ artistId, drawer: null });
+    },
+    closeArtist: () => {
+      if (typeof window !== "undefined" && history.state?.artistId) return history.back(); // popstate clears it
+      set({ artistId: null });
+    },
+
     lyricsOpen: false,
     toggleLyrics: () => set((s) => ({ lyricsOpen: !s.lyricsOpen })),
 

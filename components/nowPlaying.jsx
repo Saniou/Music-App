@@ -47,7 +47,7 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
   const cover = track?.album?.images?.[0]?.url;
   const spotifyUrl = track?.url;
   const tone = useCoverTone(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
-  const { openDrawer, selectPlaylist, toggleLike, checkLiked } = usePlayer.getState();
+  const { openArtist, selectPlaylist, toggleLike, checkLiked } = usePlayer.getState();
   const liked = usePlayer((s) => !!s.liked[track?.uri]);
   const albumId = track?.album?.id;
   useEffect(() => {
@@ -139,7 +139,7 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
                     <span key={a.id ?? a.name}>
                       {i > 0 && ", "}
                       {a.id ? (
-                        <button onClick={() => openDrawer("artist", { artistId: a.id })} className="hover:text-white hover:underline">
+                        <button onClick={() => openArtist(a.id)} className="hover:text-white hover:underline">
                           {a.name}
                         </button>
                       ) : (

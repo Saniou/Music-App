@@ -5,6 +5,7 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { FiAlertCircle, FiBarChart2, FiList, FiLoader, FiLock, FiSearch, FiX } from "react-icons/fi";
 import Drawer from "./drawer";
+import ArtistPage from "./artistPage";
 import Lyrics from "./lyrics";
 import { BsPlayFill } from "react-icons/bs";
 import { coverUrl, formatTime, matchesQuery } from "@/lib/playback";
@@ -102,7 +103,8 @@ const Experience = () => {
       {/* Phones: the title takes the space between the buttons. sm+: it floats dead center. */}
       <header className="relative z-20 flex items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
         <PlaylistMenu />
-        <h1 className="pointer-events-none min-w-0 flex-1 truncate text-center font-script text-xl font-bold sm:absolute sm:left-1/2 sm:max-w-[50vw] sm:-translate-x-1/2 sm:text-4xl">
+        {/* px/py: room for script descenders and slant, which truncate would otherwise clip. */}
+        <h1 className="pointer-events-none min-w-0 flex-1 truncate px-2 py-1 text-center font-script text-xl font-bold leading-normal sm:absolute sm:left-1/2 sm:max-w-[50vw] sm:-translate-x-1/2 sm:text-4xl">
           {playlist?.name ?? "Musify"}
         </h1>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -120,6 +122,7 @@ const Experience = () => {
           <TopBar />
         </div>
       </header>
+      <ArtistPage />
       <Drawer />
 
       <Notice />

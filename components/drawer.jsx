@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { FiArrowLeft, FiPlay, FiPlus, FiSearch, FiX } from "react-icons/fi";
+import { FiPlay, FiPlus, FiSearch, FiX } from "react-icons/fi";
 import { apiGet, qs } from "@/lib/api";
 import { coverUrl, explainError, formatTime, normalizeTrack } from "@/lib/playback";
 import { usePlayer } from "@/store/player";
+
+const EASE = [0.22, 1, 0.36, 1];
 
 // GET a Web API path; refetches when `path` or `key` changes. A null path fetches nothing.
 function useApi(path, key) {
@@ -29,40 +31,51 @@ const artistNames = (t) => t.artists?.map((a) => a.name).join(", ");
 
 const Status = ({ loading, error, empty }) =>
   loading ? (
-    <p className="px-2 py-6 text-center text-sm text-gray-500">Loading…</p>
+    <p className="px-2 py-8 text-center text-sm text-gray-400">Loading…</p>
   ) : error ? (
-    <p className="px-2 py-6 text-center text-sm text-gray-400">{explainError(error)}</p>
+    <p className="px-2 py-8 text-center text-sm text-gray-300">{explainError(error)}</p>
   ) : empty ? (
-    <p className="px-2 py-6 text-center text-sm text-gray-500">{empty}</p>
+    <p className="px-3 py-8 text-center text-sm leading-relaxed text-gray-400">{empty}</p>
   ) : null;
 
+// Same label style as "Your Library" and the artist page.
 const Section = ({ title, children }) => (
-  <section className="mt-5 first:mt-2">
-    <h3 className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h3>
+  <section className="mt-6 first:mt-3">
+    <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">{title}</h3>
     {children}
   </section>
 );
 
-const TrackRow = ({ track, onPlay, showQueue = true }) => {
+const TrackRow = ({ track, onPlay, showQueue = true, current = false }) => {
   const addToQueue = usePlayer((s) => s.addToQueue);
   const cover = coverUrl(track.album?.images, 80);
   return (
-    <div className="group flex items-center gap-3 rounded-lg p-2 transition-colors duration-200 hover:bg-hover">
-      <button onClick={onPlay} className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-panel" aria-label={`Play ${track.name}`}>
-        {cover && <Image src={cover} alt="" fill sizes="40px" className="object-cover" />}
+    <div className={`group flex items-center gap-3 rounded-xl p-2 transition-colors duration-200 hover:bg-white/5 ${current ? "bg-white/5" : ""}`}>
+      <button
+        onClick={onPlay}
+        disabled={!onPlay}
+        className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-white/5 ring-1 ring-white/10"
+        aria-label={`Play ${track.name}`}
+      >
+        {cover && <Image src={cover} alt="" fill sizes="44px" className="object-cover" />}
         {onPlay && (
-          <span className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <FiPlay className="h-4 w-4" />
           </span>
         )}
       </button>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-white">{track.name}</span>
+        <span className={`block truncate text-sm ${current ? "text-spotify" : "text-white"}`}>{track.name}</span>
         <span className="block truncate text-xs text-gray-400">{artistNames(track)}</span>
       </span>
       <span className="shrink-0 text-xs tabular-nums text-gray-500">{formatTime(track.durationMs)}</span>
       {showQueue && (
-        <button onClick={() => addToQueue(track)} className="icon-btn shrink-0 p-1" aria-label={`Add ${track.name} to queue`} title="Add to queue">
+        <button
+          onClick={() => addToQueue(track)}
+          className="shrink-0 rounded-full p-1.5 text-gray-400 opacity-60 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+          aria-label={`Add ${track.name} to queue`}
+          title="Add to queue"
+        >
           <FiPlus className="h-4 w-4" />
         </button>
       )}
@@ -71,9 +84,11 @@ const TrackRow = ({ track, onPlay, showQueue = true }) => {
 };
 
 const Tile = ({ image, title, subtitle, round, onClick }) => (
-  <button onClick={onClick} className="group min-w-0 rounded-lg p-2 text-left transition-colors duration-200 hover:bg-hover">
-    <span className={`relative block aspect-square w-full overflow-hidden bg-panel ${round ? "rounded-full" : "rounded-md"}`}>
-      {image && <Image src={image} alt="" fill sizes="120px" className="object-cover" />}
+  <button onClick={onClick} className="group min-w-0 rounded-xl p-2 text-left transition-colors duration-200 hover:bg-white/5">
+    <span
+      className={`relative block aspect-square w-full overflow-hidden bg-white/5 shadow-lg ring-1 ring-white/10 ${round ? "rounded-full" : "rounded-lg"}`}
+    >
+      {image && <Image src={image} alt="" fill sizes="120px" className="object-cover transition-transform duration-500 group-hover:scale-105" />}
     </span>
     <span className="mt-2 block truncate text-sm text-white">{title}</span>
     {subtitle && <span className="block truncate text-xs text-gray-400">{subtitle}</span>}
@@ -85,9 +100,16 @@ const openAlbum = (id) => {
   selectPlaylist(`album:${id}`);
   closeDrawer();
 };
-const openArtist = (artistId, back) => usePlayer.getState().openDrawer("artist", { artistId, back });
+const openArtist = (id) => usePlayer.getState().openArtist(id);
 
-// Keeps the last search while the panel switches to an artist and back.
+// The same pill as "Search this playlist".
+const Pill = ({ children }) => (
+  <label className="mx-1 flex items-center gap-2 rounded-full bg-white/5 px-3 py-2 text-sm ring-1 ring-white/10 transition-colors duration-200 focus-within:bg-white/10 focus-within:ring-white/25">
+    {children}
+  </label>
+);
+
+// Keeps the last search while the panel closes and reopens.
 const searchCache = { q: "" };
 
 const SearchView = () => {
@@ -106,7 +128,7 @@ const SearchView = () => {
 
   return (
     <>
-      <label className="mx-2 flex items-center gap-2 rounded-full bg-white/5 px-3 py-2 text-sm ring-1 ring-white/10 focus-within:bg-white/10 focus-within:ring-white/25">
+      <Pill>
         <FiSearch className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
         <input
           autoFocus
@@ -117,9 +139,14 @@ const SearchView = () => {
           aria-label="Search Spotify"
           className="min-w-0 flex-1 bg-transparent text-white placeholder:text-gray-500 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
-      </label>
+        {q && (
+          <button onClick={() => setQ((searchCache.q = ""))} className="icon-btn shrink-0" aria-label="Clear search">
+            <FiX className="h-4 w-4" />
+          </button>
+        )}
+      </Pill>
       {!debounced ? (
-        <Status empty="Search all of Spotify. Play a song now, queue it, or open its album or artist." />
+        <Status empty="Search all of Spotify. Play a song, queue it, or open its album or artist." />
       ) : (
         <>
           <Status loading={loading} error={error} empty={data && !tracks.length && !albums.length && !artists.length && "Nothing found."} />
@@ -134,7 +161,7 @@ const SearchView = () => {
             <Section title="Artists">
               <div className="grid grid-cols-3 gap-1">
                 {artists.map((a) => (
-                  <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} onClick={() => openArtist(a.id, "search")} />
+                  <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} onClick={() => openArtist(a.id)} />
                 ))}
               </div>
             </Section>
@@ -154,66 +181,6 @@ const SearchView = () => {
   );
 };
 
-const ARTIST_PAGE = 10; // Dev Mode max for /artists/{id}/albums
-
-const ArtistView = ({ artistId }) => {
-  const artist = useApi(`/artists/${artistId}`);
-  const [pages, setPages] = useState(1);
-  return (
-    <>
-      {artist.data && (
-        <div className="flex items-center gap-4 px-2 pb-2">
-          <span className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-panel">
-            {coverUrl(artist.data.images, 160) && (
-              <Image src={coverUrl(artist.data.images, 160)} alt="" fill sizes="80px" className="object-cover" />
-            )}
-          </span>
-          <h3 className="min-w-0 truncate text-2xl font-bold">{artist.data.name}</h3>
-        </div>
-      )}
-      <Status loading={artist.loading} error={artist.error} />
-      <Section title="Discography">
-        <div className="grid grid-cols-3 gap-1">
-          {Array.from({ length: pages }, (_, page) => (
-            <AlbumPage key={page} artistId={artistId} page={page} onMore={page === pages - 1 ? () => setPages(pages + 1) : null} />
-          ))}
-        </div>
-      </Section>
-    </>
-  );
-};
-
-// One page of an artist's albums; the last page offers "More" while Spotify has more.
-const AlbumPage = ({ artistId, page, onMore }) => {
-  const { data, error, loading } = useApi(
-    `/artists/${artistId}/albums?${qs({ include_groups: "album,single", limit: ARTIST_PAGE, offset: page * ARTIST_PAGE })}`
-  );
-  if (loading || error)
-    return (
-      <div className="col-span-3">
-        <Status loading={loading} error={error} />
-      </div>
-    );
-  return (
-    <>
-      {(data?.items ?? []).map((a) => (
-        <Tile
-          key={a.id}
-          image={coverUrl(a.images, 240)}
-          title={a.name}
-          subtitle={a.release_date?.slice(0, 4)}
-          onClick={() => openAlbum(a.id)}
-        />
-      ))}
-      {onMore && data?.next && (
-        <button onClick={onMore} className="col-span-3 mt-2 rounded-full py-2 text-sm text-gray-300 ring-1 ring-white/10 hover:bg-white/5">
-          More
-        </button>
-      )}
-    </>
-  );
-};
-
 const QueueView = () => {
   const uri = usePlayer((s) => s.track?.uri);
   const { data, error, loading } = useApi("/me/player/queue", uri); // refetch when the track changes
@@ -224,7 +191,7 @@ const QueueView = () => {
       <Status loading={loading} error={error} empty={data && !current && "Nothing is playing."} />
       {current && (
         <Section title="Now playing">
-          <TrackRow track={current} showQueue={false} />
+          <TrackRow track={current} showQueue={false} current />
         </Section>
       )}
       {next.length > 0 && (
@@ -234,7 +201,7 @@ const QueueView = () => {
           ))}
         </Section>
       )}
-      <p className="mt-4 px-2 text-xs text-gray-500">Add songs from Search with +.</p>
+      {data && <p className="mt-6 px-2 text-xs text-gray-500">Add songs from Search with +.</p>}
     </>
   );
 };
@@ -254,14 +221,16 @@ const StatsView = () => {
   };
   return (
     <>
-      <div className="mx-2 flex rounded-full bg-white/5 p-1 ring-1 ring-white/10" role="tablist">
+      <div className="mx-1 flex rounded-full bg-white/5 p-1 ring-1 ring-white/10" role="tablist">
         {RANGES.map(([value, label]) => (
           <button
             key={value}
             role="tab"
             aria-selected={range === value}
             onClick={() => setRange(value)}
-            className={`flex-1 rounded-full py-1.5 text-xs transition-colors ${range === value ? "bg-white text-black" : "text-gray-300 hover:text-white"}`}
+            className={`flex-1 rounded-full py-1.5 text-xs transition-colors duration-200 ${
+              range === value ? "bg-white/15 text-white shadow-sm" : "text-gray-400 hover:text-white"
+            }`}
           >
             {label}
           </button>
@@ -269,7 +238,7 @@ const StatsView = () => {
       </div>
       <button
         onClick={playTop}
-        className="mx-2 mt-3 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-full bg-white/10 py-2 text-sm font-medium hover:bg-white/15"
+        className="mx-1 mt-3 flex w-[calc(100%-0.5rem)] items-center justify-center gap-2 rounded-full bg-white/5 py-2 text-sm text-gray-200 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-white"
       >
         <FiPlay className="h-4 w-4" /> Open your top tracks
       </button>
@@ -277,7 +246,7 @@ const StatsView = () => {
         <Status loading={loading} error={error} empty={data && !data.items?.length && "Not enough listening yet."} />
         <div className="grid grid-cols-3 gap-1">
           {(data?.items ?? []).map((a, i) => (
-            <Tile key={a.id} round image={coverUrl(a.images, 240)} title={`${i + 1}. ${a.name}`} onClick={() => openArtist(a.id, "stats")} />
+            <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} subtitle={`#${i + 1}`} onClick={() => openArtist(a.id)} />
           ))}
         </div>
       </Section>
@@ -285,11 +254,14 @@ const StatsView = () => {
   );
 };
 
-const TITLES = { search: "Search", queue: "Queue", artist: "Artist", stats: "Your top" };
+const TITLES = { search: "Search", queue: "Queue", stats: "Your top" };
 
+// Right side panel. Glass over the page, tinted by the playing cover (content is the colour),
+// floating with rounded corners on wide screens, full screen on phones.
 export default function Drawer() {
   const drawer = usePlayer((s) => s.drawer);
-  const { closeDrawer, openDrawer } = usePlayer.getState();
+  const tint = usePlayer((s) => coverUrl(s.track?.album?.images, 300));
+  const { closeDrawer } = usePlayer.getState();
 
   useEffect(() => {
     if (!drawer) return;
@@ -307,35 +279,38 @@ export default function Drawer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
             onClick={closeDrawer}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
             aria-hidden
           />
           <motion.aside
             key="panel"
             role="dialog"
             aria-label={TITLES[drawer.view]}
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 320, damping: 34 }}
-            className="scroll-thin fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-elevated/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl sm:w-[400px]"
+            initial={{ x: "105%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "105%", opacity: 0.6 }}
+            transition={{ duration: 0.5, ease: EASE }}
+            className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden bg-black/45 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl sm:inset-y-3 sm:right-3 sm:w-[400px] sm:rounded-[20px]"
           >
-            <div className="mb-3 flex items-center gap-2 px-1">
-              {drawer.back && (
-                <button onClick={() => openDrawer(drawer.back)} className="icon-btn p-1" aria-label="Back">
-                  <FiArrowLeft className="h-5 w-5" />
-                </button>
-              )}
-              <h2 className="flex-1 text-lg font-semibold">{TITLES[drawer.view]}</h2>
-              <button onClick={closeDrawer} className="icon-btn p-1" aria-label="Close">
+            {tint && (
+              <div
+                className="pointer-events-none absolute -inset-10 bg-cover bg-center opacity-30 blur-3xl saturate-150"
+                style={{ backgroundImage: `url(${tint})` }}
+              />
+            )}
+            <header className="relative flex items-center gap-2 px-4 pb-2 pt-4">
+              <h2 className="flex-1 pb-1 font-script text-3xl font-bold leading-normal">{TITLES[drawer.view]}</h2>
+              <button onClick={closeDrawer} className="rounded-full p-2 text-gray-300 transition-colors hover:bg-white/10 hover:text-white" aria-label="Close">
                 <FiX className="h-5 w-5" />
               </button>
+            </header>
+            <div className="scroll-thin relative min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+              {drawer.view === "search" && <SearchView />}
+              {drawer.view === "queue" && <QueueView />}
+              {drawer.view === "stats" && <StatsView />}
             </div>
-            {drawer.view === "search" && <SearchView />}
-            {drawer.view === "queue" && <QueueView />}
-            {drawer.view === "stats" && <StatsView />}
-            {drawer.view === "artist" && <ArtistView key={drawer.artistId} artistId={drawer.artistId} />}
           </motion.aside>
         </>
       )}
