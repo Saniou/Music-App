@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BsRepeat, BsRepeat1, BsShuffle, BsVolumeMuteFill, BsVolumeUpFill } from "react-icons/bs";
 import { usePlayer } from "@/store/player";
@@ -8,11 +8,10 @@ import { currentPosition, formatTime } from "@/lib/playback";
 // (mouse, touch or keyboard), which is when we tell Spotify.
 const Slider = ({ value, max, step, label, disabled, onDrag, onCommit, className = "" }) => {
   const ref = useRef(null);
-  const commit = useRef(onCommit);
-  commit.current = onCommit;
+  const commit = useEffectEvent((value) => onCommit(value)); // always the latest onCommit
   useEffect(() => {
     const el = ref.current;
-    const onChange = () => commit.current(Number(el.value));
+    const onChange = () => commit(Number(el.value));
     el.addEventListener("change", onChange);
     return () => el.removeEventListener("change", onChange);
   }, []);

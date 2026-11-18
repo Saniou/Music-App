@@ -41,10 +41,13 @@ const Experience = () => {
     if (token) loadPlaylists(user.username);
   }, [token, user?.username, loadPlaylists]);
 
-  const [query, setQuery] = useState("");
   const searchRef = useRef(null);
   const playlistId = usePlayer((s) => s.playlistId);
-  useEffect(() => setQuery(""), [playlistId]); // a new playlist starts unfiltered
+  // The query belongs to the playlist it was typed in, so a new playlist starts unfiltered
+  // without an effect resetting it.
+  const [search, setSearch] = useState({ playlistId: null, query: "" });
+  const query = search.playlistId === playlistId ? search.query : "";
+  const setQuery = (q) => setSearch({ playlistId, query: q });
   // Keep each track's index in the full list: that is what playback and highlighting use.
   const visible = useMemo(
     () => tracks.map((track, index) => ({ track, index })).filter(({ track }) => matchesQuery(track, query)),
