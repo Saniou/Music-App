@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { FiLock, FiMusic, FiX } from "react-icons/fi";
-import { canReadItems, playlistTotal, usePlayer } from "@/store/player";
+import { FiClock, FiHeart, FiLock, FiMusic, FiTrendingUp, FiX } from "react-icons/fi";
+import { COLLECTIONS, canReadItems, playlistTotal, usePlayer } from "@/store/player";
 import { coverUrl } from "@/lib/playback";
+
+// Library collections above the playlists: [key, icon, cover gradient].
+const LIBRARY = [
+  ["liked", FiHeart, "from-indigo-500 to-fuchsia-400"],
+  ["recent", FiClock, "from-sky-600 to-emerald-400"],
+  ["top:short_term", FiTrendingUp, "from-amber-500 to-rose-500"],
+  ["top:medium_term", FiTrendingUp, "from-rose-500 to-purple-600"],
+  ["top:long_term", FiTrendingUp, "from-purple-600 to-indigo-700"],
+];
 
 const PlaylistMenu = () => {
   const playlists = usePlayer((s) => s.playlists); // loaded once by Experience
@@ -49,6 +58,27 @@ const PlaylistMenu = () => {
                 <FiX className="h-4 w-4" />
               </button>
             </div>
+            {LIBRARY.map(([key, Icon, gradient]) => {
+              const isActive = key === playlistId;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setPlaylistId(key);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors duration-200 ${
+                    isActive ? "bg-hover" : "hover:bg-hover"
+                  }`}
+                >
+                  <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-gradient-to-br ${gradient}`}>
+                    <Icon className="h-4 w-4 text-white" aria-hidden />
+                  </span>
+                  <span className={`truncate text-sm ${isActive ? "text-spotify" : "text-white"}`}>{COLLECTIONS[key].name}</span>
+                </button>
+              );
+            })}
+            <div className="mx-2 my-2 border-t border-white/10" />
             {playlists.map((pl) => {
               const isActive = pl.id === playlistId;
               const cover = coverUrl(pl.images, 80);

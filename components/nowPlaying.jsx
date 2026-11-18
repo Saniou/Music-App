@@ -3,7 +3,8 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { coverUrl, majorityTone } from "@/lib/playback";
 import { FaSpotify } from "react-icons/fa";
-import { BsPlayFill, BsPauseFill } from "react-icons/bs";
+import { BsHeart, BsHeartFill, BsPlayFill, BsPauseFill } from "react-icons/bs";
+import { usePlayer } from "@/store/player";
 import { TbPlayerTrackPrevFilled, TbPlayerTrackNextFilled } from "react-icons/tb";
 import PlaybackBar from "./playbackBar";
 
@@ -46,6 +47,12 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
   const cover = track?.album?.images?.[0]?.url;
   const spotifyUrl = track?.url;
   const tone = useCoverTone(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
+  const { openDrawer, selectPlaylist, toggleLike, checkLiked } = usePlayer.getState();
+  const liked = usePlayer((s) => !!s.liked[track?.uri]);
+  const albumId = track?.album?.id;
+  useEffect(() => {
+    checkLiked(track?.uri);
+  }, [track?.uri, checkLiked]);
 
   return (
     <div className="flex w-full max-w-md flex-col items-center">
@@ -103,6 +110,14 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
             {cover && (
               <Image src={cover} alt={track?.name ?? "Album cover"} fill sizes="288px" className="object-cover" priority />
             )}
+            {albumId && (
+              <button
+                onClick={() => selectPlaylist(`album:${albumId}`)}
+                className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white"
+                aria-label={`Open album ${track.album.name ?? ""}`}
+                title={`Open album “${track.album.name ?? ""}”`}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -119,11 +134,36 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
             transition={{ duration: 0.3 }}
           >
             <p className="truncate text-sm text-gray-400">
-              {track?.artists?.map((a) => a.name).join(", ") || "—"}
+              {track?.artists?.length
+                ? track.artists.map((a, i) => (
+                    <span key={a.id ?? a.name}>
+                      {i > 0 && ", "}
+                      {a.id ? (
+                        <button onClick={() => openDrawer("artist", { artistId: a.id })} className="hover:text-white hover:underline">
+                          {a.name}
+                        </button>
+                      ) : (
+                        a.name
+                      )}
+                    </span>
+                  ))
+                : "—"}
             </p>
-            <h2 className="mt-0.5 line-clamp-2 text-lg font-semibold leading-snug sm:text-xl" title={track?.name}>
-              {track?.name ?? "Nothing playing"}
-            </h2>
+            <div className="mt-0.5 flex items-start justify-center gap-2">
+              <h2 className="line-clamp-2 text-lg font-semibold leading-snug sm:text-xl" title={track?.name}>
+                {track?.name ?? "Nothing playing"}
+              </h2>
+              {track?.uri && (
+                <button
+                  onClick={() => toggleLike(track)}
+                  aria-label={liked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                  aria-pressed={liked}
+                  className={`mt-1 shrink-0 transition-transform duration-200 hover:scale-110 ${liked ? "text-spotify" : "text-gray-400 hover:text-white"}`}
+                >
+                  {liked ? <BsHeartFill className="h-4 w-4" /> : <BsHeart className="h-4 w-4" />}
+                </button>
+              )}
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

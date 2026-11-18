@@ -3,7 +3,9 @@ import { useSession } from "next-auth/react";
 import { useShallow } from "zustand/react/shallow";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { FiAlertCircle, FiLoader, FiLock, FiSearch, FiX } from "react-icons/fi";
+import { FiAlertCircle, FiBarChart2, FiList, FiLoader, FiLock, FiSearch, FiX } from "react-icons/fi";
+import Drawer from "./drawer";
+import Lyrics from "./lyrics";
 import { BsPlayFill } from "react-icons/bs";
 import { coverUrl, formatTime, matchesQuery } from "@/lib/playback";
 import { playlistTotal } from "@/store/player";
@@ -62,7 +64,8 @@ const Experience = () => {
       if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key === "ArrowRight") p.next();
+      } else if (e.key === "l" || e.key === "L") p.toggleLyrics();
+      else if (e.key === "ArrowRight") p.next();
       else if (e.key === "ArrowLeft") p.prev();
       else if (e.key === " ") {
         e.preventDefault();
@@ -102,8 +105,22 @@ const Experience = () => {
         <h1 className="pointer-events-none min-w-0 flex-1 truncate text-center font-script text-xl font-bold sm:absolute sm:left-1/2 sm:max-w-[50vw] sm:-translate-x-1/2 sm:text-4xl">
           {playlist?.name ?? "Musify"}
         </h1>
-        <TopBar />
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {HEADER_ACTIONS.map(([view, Icon, label]) => (
+            <button
+              key={view}
+              onClick={() => usePlayer.getState().openDrawer(view)}
+              aria-label={label}
+              title={label}
+              className="rounded-full p-2 text-gray-300 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+          <TopBar />
+        </div>
       </header>
+      <Drawer />
 
       <Notice />
 
@@ -119,16 +136,23 @@ const Experience = () => {
             className="flex w-full justify-center"
           >
             {view === "player" ? (
-              <NowPlaying
-                track={shown}
-                isPlaying={isPlaying}
-                onPlayPause={togglePlay}
-                onNext={next}
-                onPrev={prev}
-                // While Spotify plays, it owns the queue (shuffle/repeat), so skipping is always allowed.
-                hasNext={!!track || activeIndex < tracks.length - 1}
-                hasPrev={!!track || activeIndex > 0}
-              />
+              // Desktop: lyrics open beside the player; the panel animates its own width, which glides
+              // the player aside (see Lyrics).
+              <div className="flex w-full items-center justify-center">
+                <div className="flex w-full max-w-md justify-center">
+                  <NowPlaying
+                    track={shown}
+                    isPlaying={isPlaying}
+                    onPlayPause={togglePlay}
+                    onNext={next}
+                    onPrev={prev}
+                    // While Spotify plays, it owns the queue (shuffle/repeat), so skipping is always allowed.
+                    hasNext={!!track || activeIndex < tracks.length - 1}
+                    hasPrev={!!track || activeIndex > 0}
+                  />
+                </div>
+                <Lyrics track={shown} />
+              </div>
             ) : view === "intro" ? (
               <PlayOnlyIntro
                 playlist={playlist}
@@ -164,6 +188,12 @@ const Experience = () => {
     </div>
   );
 };
+
+const HEADER_ACTIONS = [
+  ["search", FiSearch, "Search Spotify"],
+  ["queue", FiList, "Queue"],
+  ["stats", FiBarChart2, "Your top"],
+];
 
 const PLAY_ONLY_WHY =
   "Spotify only shares the track list of playlists you own or collaborate on. You can still play this one — the timeline fills with what played and the next ~20 tracks Spotify has queued.";

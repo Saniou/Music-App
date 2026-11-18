@@ -43,12 +43,23 @@ body {
 /* Thin slider: a 16px tall hit area with a 4px track drawn inside it; the filled part comes
    from --pct (set inline), the thumb appears on hover/focus/drag. The native one draws a gap
    around its thumb in the dark color scheme. */
+/* Registered so it can be transitioned: the fill glides between the 4-per-second value updates
+   instead of stepping. Off while pressed, so a drag follows the pointer exactly. */
+@property --pct {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
 .range {
   -webkit-appearance: none;
   appearance: none;
   height: 16px;
   background: transparent;
   cursor: pointer;
+  transition: --pct 250ms linear;
+}
+.range:active {
+  transition: none;
 }
 .range::-webkit-slider-runnable-track {
   height: 4px;
@@ -113,6 +124,18 @@ body {
 .range:disabled {
   cursor: default;
   opacity: 0.3;
+}
+
+/* Karaoke word: white fills left to right up to --p (set per frame), with a soft edge. */
+.karaoke-word {
+  background-image: linear-gradient(
+    90deg,
+    #fff calc(var(--p, -6%) - 6%),
+    rgba(255, 255, 255, 0.35) calc(var(--p, -6%) + 6%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 @layer components {

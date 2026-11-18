@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { spotifyApi } from "@/hooks/useSpotify";
+import { apiGet, apiSend, qs } from "@/lib/api";
 import {
   REPEAT_MODES,
   currentPosition,
@@ -7,19 +8,53 @@ import {
   indexOfTrack,
   nextRepeat,
   normalizeTrack,
+  reconcilePosition,
 } from "@/lib/playback";
 
 const TRACK_LIMIT = 150; // how many tracks to page in
 const POLL_GRACE_MS = 1500; // ignore polls right after a command so stale state doesn't undo the optimistic UI
+const VOLUME_HOLD_MS = 2500; // after a local volume change, ignore reported volume this long
 
-const apiGet = async (path) => {
-  const res = await fetch(`https://api.spotify.com/v1${path}`, {
-    headers: { Authorization: `Bearer ${spotifyApi.getAccessToken()}` },
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw { statusCode: res.status, body };
-  return body;
+// Collections other than playlists, keyed like playlist ids ("album:<id>" too), so selecting,
+// resuming, search and the timeline work the same for all of them.
+export const COLLECTIONS = {
+  liked: { name: "Liked Songs" },
+  recent: { name: "Recently played" },
+  "top:short_term": { name: "Top tracks · 4 weeks" },
+  "top:medium_term": { name: "Top tracks · 6 months" },
+  "top:long_term": { name: "Top tracks · all time" },
 };
+const isCollectionKey = (id) => id in COLLECTIONS || id.startsWith("album:");
+
+const pageThrough = async (path, pick) => {
+  const out = [];
+  const limit = 50;
+  for (let offset = 0; offset < TRACK_LIMIT; offset += limit) {
+    const page = await apiGet(`${path}${path.includes("?") ? "&" : "?"}${qs({ limit, offset })}`);
+    const items = page.items ?? [];
+    out.push(...items.map(pick));
+    if (items.length < limit || !page.next) break;
+  }
+  return out;
+};
+
+// -> { meta: { name, images?, uri? }, raw: Spotify track objects }
+async function loadCollection(key) {
+  if (key === "liked") return { meta: COLLECTIONS.liked, raw: await pageThrough("/me/tracks", (i) => i.track) };
+  if (key === "recent") {
+    const { items = [] } = await apiGet("/me/player/recently-played?limit=50"); // no offset paging here
+    return { meta: COLLECTIONS.recent, raw: items.map((i) => i.track) };
+  }
+  if (key.startsWith("top:"))
+    return { meta: COLLECTIONS[key], raw: await pageThrough(`/me/top/tracks?${qs({ time_range: key.slice(4) })}`, (t) => t) };
+  const id = key.slice("album:".length);
+  const album = await apiGet(`/albums/${id}`);
+  const albumRef = { id: album.id, name: album.name, images: album.images, uri: album.uri };
+  // Album tracks come without `album`; attach it so covers and the album link work.
+  const raw = await pageThrough(`/albums/${id}/tracks`, (t) => ({ ...t, album: albumRef }));
+  return { meta: { name: album.name, images: album.images, uri: album.uri }, raw };
+}
+
 // Spotify's Feb 2026 Dev Mode changes replaced GET /playlists/{id}/tracks with /items (and each
 // entry's `track` with `item`); spotify-web-api-node still calls the removed path, so fetch directly.
 // Only playlists the user owns or collaborates on return items.
@@ -56,8 +91,8 @@ const slimTrack = (t) => ({
   uri: t.uri,
   linkedUri: t.linkedUri,
   name: t.name,
-  artists: t.artists.map((a) => ({ name: a.name })),
-  album: { name: t.album?.name, images: t.album?.images ?? [] },
+  artists: t.artists.map((a) => ({ id: a.id, name: a.name })),
+  album: { id: t.album?.id, name: t.album?.name, images: t.album?.images ?? [] },
   durationMs: t.durationMs,
   url: t.url,
 });
@@ -121,10 +156,25 @@ export const usePlayer = create((set, get) => {
     }
   };
 
-  const applyPlayback = ({ contextUri, ...p }) => {
+  // positionAt: when positionMs was true (defaults to now).
+  const applyPlayback = ({ contextUri, positionAt = Date.now(), ...p }) => {
     let { tracks } = get();
-    const { status, playlist, playlistId } = get();
-    const prevUri = get().track?.uri;
+    const prev = get();
+    const { status, playlist, playlistId } = prev;
+    const prevUri = prev.track?.uri;
+    const sameTrack = !!prevUri && prevUri === p.track?.uri;
+    let clock;
+    if (p.positionMs === undefined && sameTrack) {
+      // A report without a position (SDK polls, see syncFromApi): keep the running clock, only
+      // following a play/pause change (frozen where it is now), and not during a seek.
+      const isPlaying = prev.seekAt ? prev.isPlaying : p.isPlaying;
+      clock =
+        isPlaying === prev.isPlaying
+          ? { positionMs: prev.positionMs, positionAt: prev.positionAt, isPlaying }
+          : { positionMs: currentPosition(prev), positionAt: Date.now(), isPlaying };
+    } else {
+      clock = reconcilePosition({ ...prev, trackUri: prevUri }, { ...p, positionAt, trackUri: p.track?.uri });
+    }
     // Play-only playlist: Spotify won't list its tracks, so collect them as they play from it.
     if (status === "context" && p.track && contextUri === playlist?.uri && indexOfTrack(tracks, p.track) < 0) {
       tracks = [...tracks, p.track];
@@ -132,7 +182,7 @@ export const usePlayer = create((set, get) => {
       remember(playlistId, { discovered: tracks.slice(-DISCOVERED_CAP).map(slimTrack) });
     }
     const index = indexOfTrack(tracks, p.track);
-    set({ ...p, contextUri, positionAt: Date.now(), ...(index >= 0 && { activeIndex: index }) });
+    set({ ...p, ...clock, contextUri, ...(index >= 0 && { activeIndex: index }) });
     rememberProgress();
     // Once per track, not on every poll, and after a beat so Spotify's queue has caught up.
     if (p.track?.uri !== prevUri) setTimeout(discoverFromQueue, 1500);
@@ -172,6 +222,8 @@ export const usePlayer = create((set, get) => {
     isPlaying: false,
     positionMs: 0,
     positionAt: 0,
+    seekAt: 0, // when the user last seeked, until Spotify confirms; see reconcilePosition
+    volumeHoldUntil: 0, // set by setVolume(); polls don't overwrite the volume until then
     durationMs: 0,
     volume: 0.5,
     shuffle: false,
@@ -196,6 +248,7 @@ export const usePlayer = create((set, get) => {
         // Reopen where the user left off; otherwise start on one of their own playlists with tracks,
         // since only those expose their track list.
         const savedId = readResume(userId).playlistId;
+        if (savedId && isCollectionKey(savedId)) return get().selectPlaylist(savedId);
         const preferred =
           items.find((p) => p.id === savedId) ??
           items.find((p) => canReadItems(p, userId) && playlistTotal(p) > 0) ??
@@ -222,7 +275,28 @@ export const usePlayer = create((set, get) => {
         set({ positionMs: saved.positionMs ?? 0, positionAt: Date.now(), durationMs: track.durationMs ?? 0, isPlaying: false });
       };
 
+      // A full track list is in hand: pick the playing, else the saved, track.
+      const showTracks = (playlist, tracks) => {
+        const playingIndex = indexOfTrack(tracks, get().track);
+        const savedIndex = tracks.findIndex((t) => t.uri === saved.uri);
+        set({
+          playlist,
+          tracks,
+          activeIndex: playingIndex >= 0 ? playingIndex : Math.max(0, savedIndex),
+          status: tracks.length ? "ready" : "empty",
+          resume: savedIndex >= 0 ? { uri: saved.uri, positionMs: saved.positionMs ?? 0 } : null,
+        });
+        if (playingIndex < 0) showSaved(tracks[savedIndex]);
+      };
+
       try {
+        if (isCollectionKey(id)) {
+          const { meta, raw } = await loadCollection(id);
+          if (stale()) return;
+          const seen = new Set(); // recently played repeats tracks
+          return showTracks(meta, raw.map(normalizeTrack).filter((t) => t?.id && !seen.has(t.uri) && seen.add(t.uri)));
+        }
+
         const meta = await spotifyApi.getPlaylist(id);
         if (stale()) return;
         // Not the user's: Spotify returns metadata only, but it can still be played as a context.
@@ -259,17 +333,7 @@ export const usePlayer = create((set, get) => {
         }
         if (stale()) return;
 
-        const tracks = collected.map((i) => normalizeTrack(entryTrack(i))).filter((t) => t?.id);
-        const playingIndex = indexOfTrack(tracks, get().track);
-        const savedIndex = tracks.findIndex((t) => t.uri === saved.uri);
-        set({
-          playlist: meta.body,
-          tracks,
-          activeIndex: playingIndex >= 0 ? playingIndex : Math.max(0, savedIndex),
-          status: tracks.length ? "ready" : "empty",
-          resume: savedIndex >= 0 ? { uri: saved.uri, positionMs: saved.positionMs ?? 0 } : null,
-        });
-        if (playingIndex < 0) showSaved(tracks[savedIndex]);
+        showTracks(meta.body, collected.map((i) => normalizeTrack(entryTrack(i))).filter((t) => t?.id));
       } catch (e) {
         console.error("Failed to load playlist", e?.body ?? e);
         if (!stale()) set({ status: "error" });
@@ -328,8 +392,12 @@ export const usePlayer = create((set, get) => {
       return s.status === "context" ? playContext() : s.playIndex(s.activeIndex - 1);
     },
 
-    seek: (ms) => command({ positionMs: ms, positionAt: Date.now() }, () => spotifyApi.seek(Math.round(ms))),
-    setVolume: (volume) => command({ volume }, () => spotifyApi.setVolume(Math.round(volume * 100))),
+    // seekAt: the bar stays where the user put it until Spotify confirms (see reconcilePosition).
+    seek: (ms) =>
+      command({ positionMs: ms, positionAt: Date.now(), seekAt: Date.now() }, () => spotifyApi.seek(Math.round(ms))),
+    // volumeHoldUntil: like seek's hold, so a pre-change report doesn't flick the slider back.
+    setVolume: (volume) =>
+      command({ volume, volumeHoldUntil: Date.now() + VOLUME_HOLD_MS }, () => spotifyApi.setVolume(Math.round(volume * 100))),
     toggleShuffle: () => {
       const shuffle = !get().shuffle;
       return command({ shuffle }, () => spotifyApi.setShuffle(shuffle));
@@ -339,10 +407,87 @@ export const usePlayer = create((set, get) => {
       return command({ repeat }, () => spotifyApi.setRepeat(repeat));
     },
 
+    // Play tracks that aren't the selected collection (search results), as their own queue.
+    playTracks: (list, i = 0) => {
+      const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
+      const t = list[i];
+      if (!t) return;
+      sdkPlayer?.activateElement?.();
+      return command(
+        { track: t, isPlaying: true, positionMs: 0, positionAt: Date.now(), durationMs: t.durationMs ?? 0 },
+        () =>
+          spotifyApi.play({
+            device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
+            uris: list.map((x) => x.uri),
+            offset: { position: i },
+          })
+      );
+    },
+
+    addToQueue: async (track) => {
+      try {
+        await apiSend("POST", `/me/player/queue?${qs({ uri: track.uri })}`);
+        set({ notice: `Added “${track.name}” to the queue.` });
+      } catch (e) {
+        set({ notice: explainError(e) });
+      }
+    },
+
+    transferTo: (deviceId) =>
+      command({ activeDeviceId: deviceId }, () => apiSend("PUT", "/me/player", { device_ids: [deviceId], play: true })),
+
+    // Liked state per track uri, filled lazily for the playing track.
+    liked: {},
+    checkLiked: async (uri) => {
+      if (!uri || uri in get().liked) return;
+      try {
+        const [isLiked] = await apiGet(`/me/library/contains?${qs({ uris: uri })}`);
+        set((s) => ({ liked: { ...s.liked, [uri]: !!isLiked } }));
+      } catch (e) {
+        console.warn("Liked check failed", e?.body ?? e);
+      }
+    },
+    toggleLike: async (track) => {
+      const { uri } = track;
+      const was = !!get().liked[uri];
+      set((s) => ({ liked: { ...s.liked, [uri]: !was } }));
+      try {
+        await apiSend(was ? "DELETE" : "PUT", `/me/library?${qs({ uris: uri })}`);
+      } catch (e) {
+        set((s) => ({
+          liked: { ...s.liked, [uri]: was },
+          // Sessions from before user-library-modify was added lack the scope.
+          notice: e?.statusCode === 403 ? "Saving needs a new permission: sign out and sign in again." : explainError(e),
+        }));
+      }
+    },
+
+    lyricsOpen: false,
+    toggleLyrics: () => set((s) => ({ lyricsOpen: !s.lyricsOpen })),
+
+    // Side panel: { view: "search" | "queue" | "artist" | "stats", artistId? } or null.
+    drawer: null,
+    openDrawer: (view, extra) => set({ drawer: { view, ...extra } }),
+    closeDrawer: () => set({ drawer: null }),
+
     syncFromApi: async ({ force = false } = {}) => {
       const settling = () => !force && Date.now() - get().lastCommandAt < POLL_GRACE_MS;
       if (!spotifyApi.getAccessToken() || settling()) return;
       try {
+        // Playing in this tab: ask the SDK, not the Web API. Both report the position as of the last
+        // state change (e.g. the seek target), not now, so a poll would yank the bar back to it.
+        // Positions come from SDK events instead (they fire at the change); the poll only notices a
+        // new track or another device taking over.
+        const { sdkPlayer, sdkDeviceId, activeDeviceId } = get();
+        if (sdkPlayer && sdkDeviceId && activeDeviceId === sdkDeviceId) {
+          const state = await sdkPlayer.getCurrentState();
+          if (state) {
+            if (settling()) return;
+            const newTrack = state.track_window.current_track?.uri !== get().track?.uri;
+            return get().applySdkState(state, { withPosition: newTrack });
+          }
+          // null: another device took over; fall through to the Web API.
+        }
         const { body } = await spotifyApi.getMyCurrentPlaybackState();
         if (settling()) return;
         if (!body?.device) return set({ track: null, contextUri: null, isPlaying: false, activeDeviceId: null });
@@ -355,18 +500,20 @@ export const usePlayer = create((set, get) => {
           repeat: body.repeat_state,
           activeDeviceId: body.device.id,
           contextUri: body.context?.uri ?? null,
-          ...(body.device.volume_percent != null && { volume: body.device.volume_percent / 100 }),
+          ...(body.device.volume_percent != null &&
+            Date.now() > get().volumeHoldUntil && { volume: body.device.volume_percent / 100 }),
         });
       } catch (e) {
         console.warn("Playback state sync failed", e?.body ?? e);
       }
     },
 
-    applySdkState: (s) =>
+    // withPosition: false for polls (their position is stale, see syncFromApi); events carry a fresh one.
+    applySdkState: (s, { withPosition = true } = {}) =>
       applyPlayback({
         track: normalizeTrack(s.track_window.current_track),
         isPlaying: !s.paused,
-        positionMs: s.position,
+        ...(withPosition && { positionMs: s.position }),
         durationMs: s.duration,
         shuffle: s.shuffle,
         repeat: REPEAT_MODES[s.repeat_mode] ?? "off",
