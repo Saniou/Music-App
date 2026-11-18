@@ -1,8 +1,10 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   BsLaptop,
+  BsMoonStars,
   BsPhone,
+  BsPip,
   BsRepeat,
   BsRepeat1,
   BsShuffle,
@@ -145,6 +147,117 @@ const DevicePicker = () => {
   );
 };
 
+// Small popover shell shared by the sleep timer: opens upward, closes on an outside press or Esc.
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return { open, setOpen, ref };
+}
+
+const SLEEP_OPTIONS = [
+  [15, "15 minutes"],
+  [30, "30 minutes"],
+  [60, "1 hour"],
+  ["track", "End of this song"],
+];
+
+// Pause later: after N minutes or at the end of the song. The countdown shows on the button.
+const SleepTimer = () => {
+  const { open, setOpen, ref } = usePopover();
+  const sleep = usePlayer((s) => s.sleep);
+  const setSleep = usePlayer((s) => s.setSleep);
+  // Re-render each 30s while a timed sleep runs, for the minutes left.
+  const [, tick] = useReducer((n) => n + 1, 0);
+  useEffect(() => {
+    if (!sleep?.at) return;
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [sleep]);
+  // eslint-disable-next-line react-hooks/purity -- minutes left is meant to read the clock each render
+  const minutesLeft = sleep?.at ? Math.max(1, Math.ceil((sleep.at - Date.now()) / 60_000)) : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label={sleep ? "Sleep timer on" : "Sleep timer"}
+        aria-expanded={open}
+        title="Sleep timer"
+        className={`flex items-center gap-1 p-2 transition-colors duration-200 hover:text-white ${sleep ? "text-spotify" : ""}`}
+      >
+        <BsMoonStars className="h-4 w-4" />
+        {sleep && <span className="text-[10px] font-semibold tabular-nums">{minutesLeft ? `${minutesLeft}m` : "♪"}</span>}
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-xl bg-black/60 p-2 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
+          <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Pause after</p>
+          {SLEEP_OPTIONS.map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => {
+                setSleep(value);
+                setOpen(false);
+              }}
+              className="block w-full rounded-lg px-2 py-2 text-left text-gray-200 transition-colors hover:bg-white/10"
+            >
+              {label}
+            </button>
+          ))}
+          {sleep && (
+            <button
+              onClick={() => {
+                setSleep(null);
+                setOpen(false);
+              }}
+              className="mt-1 block w-full rounded-lg px-2 py-2 text-left text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Turn off
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const noSubscribe = () => () => {};
+
+// Pop the player out into a small always-on-top window (Document Picture-in-Picture). Hidden where
+// the browser can't (Firefox, Safari, phones).
+const PipButton = () => {
+  // false on the server, the real answer in the browser, without a render-then-effect flip
+  const supported = useSyncExternalStore(
+    noSubscribe,
+    () => "documentPictureInPicture" in window,
+    () => false
+  );
+  const pip = usePlayer((s) => !!s.pipWindow);
+  const { openPip, closePip } = usePlayer.getState();
+  if (!supported) return null;
+  return (
+    <button
+      onClick={pip ? closePip : openPip}
+      aria-label={pip ? "Close mini player" : "Pop out mini player"}
+      aria-pressed={pip}
+      title="Mini player"
+      className={`hidden p-2 transition-colors duration-200 hover:text-white sm:block ${pip ? "text-spotify" : ""}`}
+    >
+      <BsPip className="h-4 w-4" />
+    </button>
+  );
+};
+
 const PlaybackBar = () => {
   const s = usePlayer(
     useShallow((st) => ({
@@ -223,12 +336,15 @@ const PlaybackBar = () => {
           >
             <TbMicrophone2 className="h-4 w-4" />
           </button>
+          <SleepTimer />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <PipButton />
           <DevicePicker />
-          <VolumeIcon className="h-4 w-4" aria-hidden />
+          {/* Phones have volume buttons; the slider only crowds the row there. */}
+          <VolumeIcon className="hidden h-4 w-4 sm:block" aria-hidden />
           <Slider
-            className="w-24"
+            className="hidden w-24 sm:block"
             label="Volume"
             value={volume}
             max={1}

@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FiAlertCircle, FiBarChart2, FiList, FiLoader, FiLock, FiSearch, FiX } from "react-icons/fi";
 import Drawer from "./drawer";
 import ArtistPage from "./artistPage";
+import ShortcutsHelp from "./shortcutsHelp";
+import PipPlayer from "./pipPlayer";
 import Lyrics from "./lyrics";
 import { BsPlayFill } from "react-icons/bs";
 import { coverUrl, formatTime, matchesQuery } from "@/lib/playback";
@@ -61,17 +63,23 @@ const Experience = () => {
     const onKey = (e) => {
       // Focused controls handle their own keys; otherwise Space on a focused button would toggle twice.
       if (e.target.closest?.("button, input, textarea, select, a, [contenteditable]")) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts alone
       const p = usePlayer.getState();
-      if (e.key === "/") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      } else if (e.key === "l" || e.key === "L") p.toggleLyrics();
-      else if (e.key === "ArrowRight") p.next();
-      else if (e.key === "ArrowLeft") p.prev();
-      else if (e.key === " ") {
-        e.preventDefault();
-        p.togglePlay();
-      }
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const handled = {
+        "/": () => searchRef.current?.focus(),
+        "?": () => p.toggleHelp(),
+        l: () => p.toggleLyrics(),
+        m: () => p.toggleMute(),
+        " ": () => p.togglePlay(),
+        ArrowRight: () => (e.shiftKey ? p.seekBy(10_000) : p.next()),
+        ArrowLeft: () => (e.shiftKey ? p.seekBy(-10_000) : p.prev()),
+        ArrowUp: () => p.nudgeVolume(0.1),
+        ArrowDown: () => p.nudgeVolume(-0.1),
+      }[key];
+      if (!handled) return;
+      e.preventDefault(); // no page scroll on Space / arrows
+      handled();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -124,6 +132,8 @@ const Experience = () => {
       </header>
       <ArtistPage />
       <Drawer />
+      <ShortcutsHelp />
+      <PipPlayer />
 
       <Notice />
 

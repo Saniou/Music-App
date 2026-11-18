@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { coverUrl, majorityTone } from "@/lib/playback";
+import { coverUrl } from "@/lib/playback";
 import { FaSpotify } from "react-icons/fa";
-import { BsHeart, BsHeartFill, BsPlayFill, BsPauseFill } from "react-icons/bs";
+import { BsHeart, BsHeartFill, BsPlayFill, BsPauseFill, BsShare } from "react-icons/bs";
 import { usePlayer } from "@/store/player";
+import useCoverColors from "@/hooks/useCoverColors";
+import ShareCard from "./shareCard";
 import { TbPlayerTrackPrevFilled, TbPlayerTrackNextFilled } from "react-icons/tb";
 import PlaybackBar from "./playbackBar";
 
@@ -16,37 +18,11 @@ const DISC_FINISH = {
     "radial-gradient(circle, transparent 0 15%, rgba(255,255,255,.14) 15.5% 16.5%, transparent 17%), conic-gradient(from 30deg, #18181b, #2e2e33, #0f0f11, #2a2533, #1c2228, #302b24, #111113, #2e2e33, #18181b)",
 };
 
-// Whether the cover is mostly light or dark, from a 24×24 sample. Spotify's CDN allows CORS,
-// so the canvas isn't tainted; if it ever is, the disc just keeps its current finish.
-function useCoverTone(url) {
-  const [tone, setTone] = useState("light");
-  useEffect(() => {
-    if (!url) return;
-    let alive = true;
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const size = 24;
-        const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d", {
-          willReadFrequently: true,
-        });
-        ctx.drawImage(img, 0, 0, size, size);
-        if (alive) setTone(majorityTone(ctx.getImageData(0, 0, size, size).data));
-      } catch {} // tainted canvas: keep the current finish
-    };
-    img.src = url;
-    return () => {
-      alive = false;
-    };
-  }, [url]);
-  return tone;
-}
-
 const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, hasPrev }) => {
   const cover = track?.album?.images?.[0]?.url;
   const spotifyUrl = track?.url;
-  const tone = useCoverTone(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
+  const { tone } = useCoverColors(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
+  const [sharing, setSharing] = useState(false);
   const { openArtist, selectPlaylist, toggleLike, checkLiked } = usePlayer.getState();
   const liked = usePlayer((s) => !!s.liked[track?.uri]);
   const albumId = track?.album?.id;
@@ -163,12 +139,23 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
                   {liked ? <BsHeartFill className="h-4 w-4" /> : <BsHeart className="h-4 w-4" />}
                 </button>
               )}
+              {track?.uri && (
+                <button
+                  onClick={() => setSharing(true)}
+                  aria-label="Share a card of this song"
+                  title="Share"
+                  className="mt-1 shrink-0 text-gray-400 transition-transform duration-200 hover:scale-110 hover:text-white"
+                >
+                  <BsShare className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
       </div>
 
       <PlaybackBar />
+      <ShareCard track={sharing ? track : null} onClose={() => setSharing(false)} />
 
       {/* Controls */}
       <div className="mt-6 flex items-center gap-2 rounded-full bg-white/5 px-3 py-2 ring-1 ring-white/10">

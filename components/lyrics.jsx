@@ -1,11 +1,106 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { FiX } from "react-icons/fi";
 import { BsPauseFill, BsPlayFill } from "react-icons/bs";
+import { BsGear } from "react-icons/bs";
 import { usePlayer } from "@/store/player";
-import { currentPosition } from "@/lib/playback";
+import { coverUrl, currentPosition } from "@/lib/playback";
+import useCoverColors from "@/hooks/useCoverColors";
 import { activeLine, fetchLyrics, wordEnd } from "@/lib/lyrics";
+
+// Text size per setting, for the side panel and for the phone's full screen.
+const SIZES = {
+  wide: { s: "text-lg xl:text-xl", m: "text-xl xl:text-2xl", l: "text-2xl xl:text-3xl" },
+  phone: { s: "text-xl", m: "text-2xl", l: "text-3xl" },
+};
+
+const Segmented = ({ value, options, onChange, label }) => (
+  <div className="flex rounded-full bg-white/5 p-0.5 ring-1 ring-white/10" role="radiogroup" aria-label={label}>
+    {options.map(([v, text]) => (
+      <button
+        key={v}
+        role="radio"
+        aria-checked={value === v}
+        onClick={() => onChange(v)}
+        className={`min-w-9 rounded-full px-2.5 py-1 text-xs transition-colors ${value === v ? "bg-white/15 text-white" : "text-gray-400 hover:text-white"}`}
+      >
+        {text}
+      </button>
+    ))}
+  </div>
+);
+
+const Toggle = ({ checked, onChange, label }) => (
+  <button
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    onClick={() => onChange(!checked)}
+    className={`relative h-6 w-10 shrink-0 rounded-full ring-1 transition-colors ${
+      checked ? "bg-spotify ring-spotify" : "bg-white/10 ring-white/20"
+    }`}
+  >
+    {/* left-0.5 anchors the knob: without it, a centred button text-align put it mid-track */}
+    <span
+      className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+        checked ? "translate-x-4" : "translate-x-0"
+      }`}
+    />
+  </button>
+);
+
+const SettingsButton = ({ open, onToggle }) => (
+  <button
+    onClick={onToggle}
+    aria-label="Lyrics settings"
+    aria-expanded={open}
+    className={`rounded-full p-2 transition-colors hover:bg-white/10 hover:text-white ${open ? "bg-white/10 text-white" : "text-gray-400"}`}
+  >
+    <BsGear className="h-4 w-4" />
+  </button>
+);
+
+// Size, alignment, word-by-word, highlight from the cover; saved in this browser. It unfolds above
+// the lyrics and pushes them down, rather than floating over the lines being read.
+const SettingsPanel = ({ open }) => {
+  const settings = usePlayer((s) => s.lyricsSettings);
+  const set = usePlayer((s) => s.setLyricsSetting);
+  const cell = "flex items-center justify-between gap-3 text-sm text-gray-200";
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.35, ease: EASE }}
+          className="shrink-0 overflow-hidden"
+        >
+          <div className="mx-2 mb-3 grid gap-3 rounded-2xl bg-black/70 p-3.5 shadow-xl ring-1 ring-white/10 backdrop-blur-2xl">
+            <div className={cell}>
+              Size
+              <Segmented label="Text size" value={settings.size} onChange={(v) => set("size", v)} options={[["s", "S"], ["m", "M"], ["l", "L"]]} />
+            </div>
+            <div className={cell}>
+              Alignment
+              <Segmented label="Alignment" value={settings.align} onChange={(v) => set("align", v)} options={[["left", "Left"], ["center", "Center"]]} />
+            </div>
+            <div className={cell}>
+              Word by word
+              <Toggle label="Word by word" checked={settings.wordByWord} onChange={(v) => set("wordByWord", v)} />
+            </div>
+            <div className={cell}>
+              Highlight from cover
+              <Toggle label="Highlight colour from the cover" checked={settings.coverColor} onChange={(v) => set("coverColor", v)} />
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 const MANUAL_SCROLL_PAUSE_MS = 4000; // after the user scrolls, don't yank the view back right away
 const EASE = [0.22, 1, 0.36, 1];
@@ -72,6 +167,9 @@ const LyricsBody = ({ track, wide }) => {
   );
   const { seek } = usePlayer.getState();
   const playingThis = clock.uri === track?.uri;
+  const settings = usePlayer((s) => s.lyricsSettings);
+  const { vivid } = useCoverColors(coverUrl(track?.album?.images, 64));
+  const highlight = (settings.coverColor && vivid) || "#fff";
 
   // 4 ticks a second while playing, same clock as the progress bar.
   const [, tick] = useReducer((n) => n + 1, 0);
@@ -88,18 +186,19 @@ const LyricsBody = ({ track, wide }) => {
   const manualAt = useRef(0);
   const frame = useRef(0);
 
-  // Bend once the lines are laid out, and again on resize; scrolling re-bends per frame (onScroll).
+  // Bend once the lines are laid out, and again whenever the box resizes (window, or the settings
+  // panel unfolding above it); scrolling re-bends per frame (onScroll).
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (!box) return;
     bendLines(box);
-    const onResize = () => bendLines(box);
-    window.addEventListener("resize", onResize);
+    const observer = new ResizeObserver(() => bendLines(box));
+    observer.observe(box);
     return () => {
-      window.removeEventListener("resize", onResize);
+      observer.disconnect();
       cancelAnimationFrame(frame.current);
     };
-  }, [data, wide]);
+  }, [data, wide, settings.size, settings.align]);
 
   const onScroll = () => {
     if (frame.current) return;
@@ -125,7 +224,7 @@ const LyricsBody = ({ track, wide }) => {
 
   // Word-by-word fill of the sung line, every animation frame while playing (once when paused or
   // after a seek). Straight to the DOM: 60 React renders a second for this would be wasteful.
-  const activeHasWords = !!lines?.[active]?.words?.length;
+  const activeHasWords = settings.wordByWord && !!lines?.[active]?.words?.length;
   useEffect(() => {
     if (!activeHasWords) return;
     let raf = 0;
@@ -145,7 +244,9 @@ const LyricsBody = ({ track, wide }) => {
   }, [active, activeHasWords, clock.isPlaying, clock.positionAt]);
 
   const markManual = () => (manualAt.current = Date.now());
-  const text = wide ? "text-xl xl:text-2xl" : "text-2xl";
+  const text = `${SIZES[wide ? "wide" : "phone"][settings.size] ?? SIZES.wide.m} ${
+    settings.align === "left" ? "text-left origin-left" : "text-center origin-center"
+  }`;
 
   let content;
   if (loading) content = <p className="text-center text-gray-400">Looking for lyrics…</p>;
@@ -162,18 +263,18 @@ const LyricsBody = ({ track, wide }) => {
         // Three distinct states so styles never blend: sung lines muted, upcoming lines faintest, the
         // current line either white (line timing) or filling word by word (karaoke) with no glow,
         // so unsung words don't look sung.
-        className={`block w-full break-words py-2.5 text-center font-bold leading-snug will-change-transform ${text} ${
+        className={`block w-full break-words py-2.5 font-bold leading-snug will-change-transform ${text} ${
           i === active
-            ? line.words?.length
+            ? settings.wordByWord && line.words?.length
               ? ""
-              : "text-white transition-colors duration-300 [text-shadow:0_0_24px_rgba(255,255,255,0.3)]"
+              : "text-[color:var(--hl)] transition-colors duration-300 [text-shadow:0_0_24px_rgba(255,255,255,0.25)]"
             : i < active
             ? "text-white/45 transition-colors duration-300 hover:text-white/70"
             : "text-white/25 transition-colors duration-300 hover:text-white/60"
         } ${playingThis ? "cursor-pointer" : "cursor-default"}`}
       >
-        {i === active && line.words?.length
-          ? // Karaoke: each word fills with white as it's sung (painted per frame, see the effect above).
+        {i === active && settings.wordByWord && line.words?.length
+          ? // Karaoke: each word fills with the highlight as it's sung (painted per frame, see above).
             line.words.map((w, j) => (
               <span key={j} data-ws={w.timeMs} data-we={wordEnd(lines, i, j)} className="karaoke-word">
                 {w.text}
@@ -189,7 +290,7 @@ const LyricsBody = ({ track, wide }) => {
       <>
         <p className="mb-6 text-center text-xs uppercase tracking-widest text-gray-400">Not synced · scroll to read</p>
         {data.plain.split(/\r?\n/).map((line, i) => (
-          <p key={i} data-line={i} className={`break-words py-2 text-center font-bold leading-snug text-white/80 ${text}`}>
+          <p key={i} data-line={i} className={`break-words py-2 font-bold leading-snug text-white/80 ${text}`}>
             {line || " "}
           </p>
         ))}
@@ -202,6 +303,7 @@ const LyricsBody = ({ track, wide }) => {
       onScroll={onScroll}
       onWheel={markManual}
       onTouchMove={markManual}
+      style={{ "--hl": highlight }}
       className="scrollbar-hide relative h-full overflow-y-auto px-6 [mask-image:linear-gradient(transparent,black_18%,black_82%,transparent)]"
     >
       {/* Half-height spacers let the first and last lines reach the center. */}
@@ -220,6 +322,7 @@ export default function Lyrics({ track }) {
   const { toggleLyrics, togglePlay } = usePlayer.getState();
   const isPlaying = usePlayer((s) => s.isPlaying);
   const playingThis = usePlayer((s) => s.track?.uri === track?.uri);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -253,10 +356,16 @@ export default function Lyrics({ track }) {
               animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
               exit={{ opacity: 0, x: 60, filter: "blur(16px)" }}
               transition={{ duration: 0.7, ease: EASE }}
-              className="absolute inset-y-0 left-0"
+              className="absolute inset-y-0 left-0 flex flex-col"
               style={{ width: panel }}
             >
-              <LyricsBody track={track} wide />
+              <div className="flex shrink-0 justify-end px-1">
+                <SettingsButton open={settingsOpen} onToggle={() => setSettingsOpen((v) => !v)} />
+              </div>
+              <SettingsPanel open={settingsOpen} />
+              <div className="relative min-h-0 flex-1">
+                <LyricsBody track={track} wide />
+              </div>
             </motion.div>
           </motion.aside>
         )}
@@ -264,7 +373,11 @@ export default function Lyrics({ track }) {
     );
 
   const cover = track?.album?.images?.[0]?.url;
-  return (
+  if (typeof document === "undefined") return null;
+  // Portal to <body>: this component sits inside the animated (transformed) view, and a transformed
+  // ancestor turns `position: fixed` into "fixed to that box", so the header and timeline showed
+  // through and overlapped the lyrics on phones.
+  return createPortal(
     <AnimatePresence>
       {visible && (
         <motion.div
@@ -289,10 +402,14 @@ export default function Lyrics({ track }) {
               <p className="truncate text-sm font-semibold">{track?.name}</p>
               <p className="truncate text-xs text-gray-300">{track?.artists?.map((a) => a.name).join(", ")}</p>
             </div>
+            <SettingsButton open={settingsOpen} onToggle={() => setSettingsOpen((v) => !v)} />
             <button onClick={toggleLyrics} className="rounded-full p-2 text-gray-300 hover:bg-white/10 hover:text-white" aria-label="Close lyrics">
               <FiX className="h-5 w-5" />
             </button>
           </header>
+          <div className="relative z-10 px-3">
+            <SettingsPanel open={settingsOpen} />
+          </div>
           <div className="relative z-10 min-h-0 flex-1">
             <LyricsBody track={track} wide={false} />
           </div>
@@ -309,6 +426,7 @@ export default function Lyrics({ track }) {
           </footer>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

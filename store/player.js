@@ -3,6 +3,7 @@ import { spotifyApi } from "@/hooks/useSpotify";
 import { apiGet, apiSend, backOff, isRateLimited, qs } from "@/lib/api";
 import {
   REPEAT_MODES,
+  coverUrl,
   currentPosition,
   explainError,
   indexOfTrack,
@@ -10,6 +11,7 @@ import {
   normalizeTrack,
   reconcilePosition,
 } from "@/lib/playback";
+import { HISTORY_CAP, MIN_LISTEN_MS } from "@/lib/history";
 
 const TRACK_LIMIT = 150; // how many tracks to page in
 const POLL_GRACE_MS = 1500; // ignore polls right after a command so stale state doesn't undo the optimistic UI
@@ -98,6 +100,39 @@ const slimTrack = (t) => ({
   url: t.url,
 });
 
+// Lyrics display settings, remembered in this browser.
+const LYRICS_SETTINGS_KEY = "musify:lyrics-settings:v1";
+export const LYRICS_DEFAULTS = { size: "m", align: "center", wordByWord: true, coverColor: false };
+const readLyricsSettings = () => {
+  try {
+    return { ...LYRICS_DEFAULTS, ...JSON.parse(localStorage.getItem(LYRICS_SETTINGS_KEY)) };
+  } catch {
+    return LYRICS_DEFAULTS; // no storage (server render, private mode): defaults
+  }
+};
+
+// Our own listening log (Spotify only returns the last 50 plays), per account, in this browser.
+const historyKey = (userId) => `musify:history:v1:${userId}`;
+export const readHistory = (userId) => {
+  try {
+    return (userId && JSON.parse(localStorage.getItem(historyKey(userId)))) || [];
+  } catch {
+    return [];
+  }
+};
+const appendHistory = (userId, entry) => {
+  if (!userId) return;
+  try {
+    localStorage.setItem(historyKey(userId), JSON.stringify([...readHistory(userId), entry].slice(-HISTORY_CAP)));
+  } catch {} // full or blocked storage: the log is a nicety
+};
+// The play being timed: { uri, entry, at, ms, lastTick }. Not UI state, so not in the store.
+let listen = null;
+
+let volumeTimer = 0;
+let seekTimer = 0;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
 // The one place player state lives. Spotify is the source of truth: commands update the UI
 // optimistically, then Web Playback SDK events and Web API polls confirm or correct it.
 export const usePlayer = create((set, get) => {
@@ -157,12 +192,41 @@ export const usePlayer = create((set, get) => {
     }
   };
 
+  // Time what plays; a track heard for MIN_LISTEN_MS or more goes into the history when it ends.
+  // Called every few seconds (usePlayback) and right around track changes for precision.
+  const tickListen = () => {
+    const s = get();
+    const now = Date.now();
+    if (listen && listen.uri === s.track?.uri && s.isPlaying) listen.ms += now - listen.lastTick;
+    if (listen) listen.lastTick = now;
+    if (listen && listen.uri !== s.track?.uri) {
+      if (listen.ms >= MIN_LISTEN_MS) appendHistory(s.userId, { ...listen.entry, ms: Math.round(listen.ms), at: listen.at });
+      listen = null;
+    }
+    if (!listen && s.track && s.isPlaying) {
+      const t = s.track;
+      listen = {
+        uri: t.uri,
+        at: now,
+        ms: 0,
+        lastTick: now,
+        entry: {
+          uri: t.uri,
+          name: t.name,
+          artists: t.artists.map((a) => ({ id: a.id, name: a.name })),
+          cover: coverUrl(t.album?.images, 80),
+        },
+      };
+    }
+  };
+
   // positionAt: when positionMs was true (defaults to now).
   const applyPlayback = ({ contextUri, positionAt = Date.now(), ...p }) => {
     let { tracks } = get();
     const prev = get();
     const { status, playlist, playlistId } = prev;
     const prevUri = prev.track?.uri;
+    if (p.track?.uri !== prevUri) tickListen(); // credit the old track up to now
     const sameTrack = !!prevUri && prevUri === p.track?.uri;
     let clock;
     if (p.positionMs === undefined && sameTrack) {
@@ -186,7 +250,10 @@ export const usePlayer = create((set, get) => {
     set({ ...p, ...clock, contextUri, ...(index >= 0 && { activeIndex: index }) });
     rememberProgress();
     // Once per track, not on every poll, and after a beat so Spotify's queue has caught up.
-    if (p.track?.uri !== prevUri) setTimeout(discoverFromQueue, 1500);
+    if (p.track?.uri !== prevUri) {
+      setTimeout(discoverFromQueue, 1500);
+      tickListen(); // log the old track, start timing the new one
+    }
   };
 
   // Play the selected playlist as a Spotify context, optionally from a given track and position.
@@ -488,6 +555,71 @@ export const usePlayer = create((set, get) => {
 
     lyricsOpen: false,
     toggleLyrics: () => set((s) => ({ lyricsOpen: !s.lyricsOpen })),
+    lyricsSettings: readLyricsSettings(),
+    setLyricsSetting: (key, value) => {
+      const lyricsSettings = { ...get().lyricsSettings, [key]: value };
+      set({ lyricsSettings });
+      try {
+        localStorage.setItem(LYRICS_SETTINGS_KEY, JSON.stringify(lyricsSettings));
+      } catch {}
+    },
+
+    tickListen,
+
+    // Keyboard nudges update the UI at once and tell Spotify after a short pause, so holding a key
+    // doesn't fire a request per repeat (the Dev Mode rate limit is small).
+    nudgeVolume: (delta) => {
+      set((s) => ({ volume: clamp(s.volume + delta, 0, 1), volumeHoldUntil: Date.now() + VOLUME_HOLD_MS }));
+      clearTimeout(volumeTimer);
+      volumeTimer = setTimeout(() => get().setVolume(get().volume), 350);
+    },
+    mutedFrom: 0,
+    toggleMute: () => {
+      const s = get();
+      if (s.volume > 0) {
+        set({ mutedFrom: s.volume });
+        s.setVolume(0);
+      } else s.setVolume(s.mutedFrom || 0.5);
+    },
+    seekBy: (deltaMs) => {
+      const s = get();
+      if (!s.track || !s.durationMs) return;
+      const target = clamp(currentPosition(s) + deltaMs, 0, s.durationMs - 1000);
+      set({ positionMs: target, positionAt: Date.now(), seekAt: Date.now() });
+      clearTimeout(seekTimer);
+      seekTimer = setTimeout(() => get().seek(currentPosition(get())), 350);
+    },
+
+    // Sleep timer: { at } (a time) or { endOfTrack: true }; usePlayback pauses when it's due.
+    sleep: null,
+    setSleep: (minutes) =>
+      set({ sleep: minutes === "track" ? { endOfTrack: true } : minutes ? { at: Date.now() + minutes * 60_000 } : null }),
+
+    helpOpen: false,
+    toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
+
+    // Floating mini player (Document Picture-in-Picture, Chrome/Edge): a window that stays on top.
+    pipWindow: null,
+    openPip: async () => {
+      if (get().pipWindow) return get().pipWindow.focus();
+      if (typeof window === "undefined" || !("documentPictureInPicture" in window))
+        return set({ notice: "This browser can’t pop out a mini player. Chrome or Edge can." });
+      try {
+        const pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 420 });
+        // The new window starts blank: bring the page's styles (Tailwind, fonts) along.
+        for (const node of document.querySelectorAll('link[rel="stylesheet"], style')) {
+          const copy = node.cloneNode(true);
+          if (node.href) copy.href = node.href; // absolute: the pop-out has no base URL of ours
+          pip.document.head.appendChild(copy);
+        }
+        pip.document.documentElement.style.colorScheme = "dark";
+        pip.addEventListener("pagehide", () => set({ pipWindow: null }));
+        set({ pipWindow: pip });
+      } catch (e) {
+        console.warn("Mini player failed", e);
+      }
+    },
+    closePip: () => get().pipWindow?.close(),
 
     // Side panel: { view: "search" | "queue" | "artist" | "stats", artistId? } or null.
     drawer: null,

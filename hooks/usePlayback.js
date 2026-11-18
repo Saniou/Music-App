@@ -5,6 +5,7 @@ import { currentPosition } from "@/lib/playback";
 
 const SDK_SRC = "https://sdk.scdn.co/spotify-player.js";
 const POLL_MS = 5000;
+const LISTEN_TICK_MS = 5000;
 
 // Wires the player store to the outside world: the Web Playback SDK (this tab as a Spotify
 // device), Web API polling (any other device) and the Media Session (OS media keys and card).
@@ -47,16 +48,43 @@ export default function usePlayback() {
   }, []);
 
   useEffect(() => {
-    const { syncFromApi, rememberProgress } = usePlayer.getState();
+    const { syncFromApi, rememberProgress, tickListen } = usePlayer.getState();
     syncFromApi();
     const id = setInterval(() => document.visibilityState === "visible" && syncFromApi(), POLL_MS);
-    // The last poll can be seconds old; save the exact position when the tab goes away.
-    window.addEventListener("pagehide", rememberProgress);
+    // Listening time for the history; runs even in a background tab, since music plays there too.
+    const listenId = setInterval(tickListen, LISTEN_TICK_MS);
+    // The last poll can be seconds old; save the exact position (and listening time) on leaving.
+    const onHide = () => {
+      rememberProgress();
+      tickListen();
+    };
+    window.addEventListener("pagehide", onHide);
     return () => {
       clearInterval(id);
-      window.removeEventListener("pagehide", rememberProgress);
+      clearInterval(listenId);
+      window.removeEventListener("pagehide", onHide);
     };
   }, []);
+
+  // Sleep timer: pause at the set time, or when the playing track ends.
+  const sleep = usePlayer((s) => s.sleep);
+  const sleepUri = usePlayer((s) => s.track?.uri);
+  const sleepPlaying = usePlayer((s) => s.isPlaying);
+  const sleepClock = usePlayer((s) => s.positionAt);
+  useEffect(() => {
+    if (!sleep) return;
+    const s = usePlayer.getState();
+    let ms;
+    if (sleep.at) ms = sleep.at - Date.now();
+    else if (s.isPlaying && s.durationMs) ms = s.durationMs - currentPosition(s) - 400; // just before the next one starts
+    else return;
+    const id = setTimeout(() => {
+      const st = usePlayer.getState();
+      if (st.isPlaying) st.togglePlay();
+      usePlayer.setState({ sleep: null, notice: "Sleep timer: paused. Good night." });
+    }, Math.max(0, ms));
+    return () => clearTimeout(id);
+  }, [sleep, sleepUri, sleepPlaying, sleepClock]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;

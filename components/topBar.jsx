@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { FiChevronDown, FiLogOut } from "react-icons/fi";
+import { BsKeyboard } from "react-icons/bs";
+import { usePlayer } from "@/store/player";
 
 const TopBar = () => {
   const { data: session } = useSession();
@@ -39,10 +41,21 @@ const TopBar = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-md bg-elevated shadow-xl ring-1 ring-white/10">
+        <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl bg-black/60 p-1.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
+          <button
+            onClick={() => {
+              setOpen(false);
+              usePlayer.getState().toggleHelp();
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-200 transition-colors duration-200 hover:bg-white/10"
+          >
+            <BsKeyboard className="h-4 w-4" />
+            Keyboard shortcuts
+            <kbd className="ml-auto rounded bg-white/10 px-1.5 text-[10px] text-gray-400">?</kbd>
+          </button>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex w-full items-center gap-2 px-4 py-3 text-sm text-gray-200 transition-colors duration-200 hover:bg-hover"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-200 transition-colors duration-200 hover:bg-white/10"
           >
             <FiLogOut className="h-4 w-4" />
             Sign out

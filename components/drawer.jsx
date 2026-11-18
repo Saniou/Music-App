@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { FiPlay, FiPlus, FiSearch, FiX } from "react-icons/fi";
 import { apiGet, qs } from "@/lib/api";
 import { coverUrl, explainError, formatTime, normalizeTrack } from "@/lib/playback";
-import { usePlayer } from "@/store/player";
+import { readHistory, usePlayer } from "@/store/player";
+import { formatListening, weekStats } from "@/lib/history";
 
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -212,7 +213,129 @@ const RANGES = [
   ["long_term", "All time"],
 ];
 
+// "Your week" from our own log: a headline number, minutes per day, top artists and songs.
+const YourWeek = () => {
+  const userId = usePlayer((s) => s.userId);
+  const uri = usePlayer((s) => s.track?.uri); // re-read as songs change, so a just-finished one shows
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- uri is the refresh signal, not an input
+  const stats = useMemo(() => weekStats(readHistory(userId)), [userId, uri]);
+  const max = Math.max(1, ...stats.days.map((d) => d.ms));
+  const today = stats.days.length - 1;
+
+  if (!stats.plays)
+    return (
+      <Status empty="Your own stats start now: every song you listen to for 30 seconds or more is counted. They stay in this browser only." />
+    );
+
+  return (
+    <>
+      <div className="mx-1 mt-1 grid grid-cols-2 gap-2">
+        <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400">Listened</p>
+          <p className="mt-1 text-2xl font-bold">{formatListening(stats.totalMs)}</p>
+        </div>
+        <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400">Plays</p>
+          <p className="mt-1 text-2xl font-bold">{stats.plays}</p>
+        </div>
+      </div>
+
+      <Section title="Minutes per day">
+        {/* One series, one colour; today in full strength. Hover or focus a day for its value. */}
+        <div className="mx-1 flex h-36 items-end gap-2 border-b border-white/10 pt-8" role="list" aria-label="Minutes listened per day, last 7 days">
+          {stats.days.map((d, i) => {
+            const minutes = Math.round(d.ms / 60_000);
+            const day = new Date(d.start).toLocaleDateString(undefined, { weekday: "short" });
+            return (
+              <div
+                key={d.start}
+                role="listitem"
+                tabIndex={0}
+                aria-label={`${day}: ${minutes} minutes`}
+                className="group relative flex h-full flex-1 flex-col justify-end outline-none"
+              >
+                <span className="pointer-events-none absolute -top-7 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  {day} · {minutes} min
+                </span>
+                <div
+                  className={`w-full rounded-t-[4px] transition-colors ${i === today ? "bg-spotify" : "bg-spotify/50 group-hover:bg-spotify/70"}`}
+                  style={{ height: d.ms ? `max(3px, ${(d.ms / max) * 100}%)` : 0 }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="mx-1 mt-1.5 flex gap-2">
+          {stats.days.map((d, i) => (
+            <span key={d.start} className={`flex-1 text-center text-[11px] ${i === today ? "font-semibold text-white" : "text-gray-500"}`}>
+              {new Date(d.start).toLocaleDateString(undefined, { weekday: "narrow" })}
+            </span>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Top artists">
+        {stats.topArtists.map((a, i) => (
+          <button
+            key={a.id ?? a.name}
+            onClick={() => a.id && openArtist(a.id)}
+            disabled={!a.id}
+            className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/5"
+          >
+            <span className="w-5 text-right text-sm tabular-nums text-gray-500">{i + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
+            <span className="text-xs tabular-nums text-gray-400">{formatListening(a.ms)}</span>
+          </button>
+        ))}
+      </Section>
+
+      <Section title="Top songs">
+        {stats.topTracks.map((t) => (
+          <div key={t.uri} className="flex items-center gap-3 rounded-xl p-2">
+            <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/5 ring-1 ring-white/10">
+              {t.cover && <Image src={t.cover} alt="" fill sizes="40px" className="object-cover" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm">{t.name}</span>
+              <span className="block truncate text-xs text-gray-400">{t.artists?.map((a) => a.name).join(", ")}</span>
+            </span>
+            <span className="shrink-0 text-xs tabular-nums text-gray-400">{t.plays}×</span>
+          </div>
+        ))}
+      </Section>
+      <p className="mt-4 px-2 text-xs text-gray-500">Counted in this browser; songs played 30 seconds or more.</p>
+    </>
+  );
+};
+
 const StatsView = () => {
+  const [source, setSource] = useState("spotify");
+  return (
+    <>
+      <div className="mx-1 mb-3 flex rounded-full bg-white/5 p-1 ring-1 ring-white/10" role="tablist" aria-label="Stats source">
+        {[
+          ["spotify", "Spotify top"],
+          ["week", "Your week"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            aria-selected={source === value}
+            onClick={() => setSource(value)}
+            className={`flex-1 rounded-full py-1.5 text-xs transition-colors duration-200 ${
+              source === value ? "bg-white/15 text-white shadow-sm" : "text-gray-400 hover:text-white"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {source === "spotify" ? <SpotifyTop /> : <YourWeek />}
+    </>
+  );
+};
+
+const SpotifyTop = () => {
   const [range, setRange] = useState("short_term");
   const { data, error, loading } = useApi(`/me/top/artists?${qs({ time_range: range, limit: 21 })}`);
   const playTop = () => {
