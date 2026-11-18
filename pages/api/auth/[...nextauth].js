@@ -33,7 +33,9 @@ export const authOptions = {
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
       authorization: {
         url: "https://accounts.spotify.com/authorize",
-        params: { scope: scopes },
+        // show_dialog forces Spotify to re-show consent so a login always
+        // grants the current scope set (avoids stale tokens after scope changes).
+        params: { scope: scopes, show_dialog: true },
       },
     }),
   ],
@@ -51,6 +53,7 @@ export const authOptions = {
           refreshToken: account.refresh_token,
           username: account.providerAccountId,
           accessTokenExpires: account.expires_at * 1000,
+          scope: account.scope ?? null, // scopes Spotify actually granted
         };
       }
 
@@ -65,11 +68,13 @@ export const authOptions = {
     async session({ session, token }) {
       session.user = {
         ...session.user,
+        // The refresh token stays in the encrypted JWT cookie; the browser never needs it.
         accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
         username: token.username,
+        scope: token.scope ?? null,
       };
-      session.error = token.error;
+      // Use null (not undefined) — getServerSideProps can't serialize undefined.
+      session.error = token.error ?? null;
       return session;
     },
   },

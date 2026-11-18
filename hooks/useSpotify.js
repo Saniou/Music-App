@@ -4,7 +4,7 @@ import SpotifyWebApi from "spotify-web-api-node";
 
 // Browser-side client. It only ever needs the user's access token — no client
 // secret is exposed here. A single shared instance keeps the token in one place.
-const spotifyApi = new SpotifyWebApi();
+export const spotifyApi = new SpotifyWebApi();
 
 function useSpotify() {
   const { data: session } = useSession();

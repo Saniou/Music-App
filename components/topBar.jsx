@@ -30,7 +30,7 @@ const TopBar = () => {
             <Image src={image} alt={name ?? "User"} fill sizes="28px" className="object-cover" />
           )}
         </span>
-        <span className="text-sm font-semibold">{name}</span>
+        <span className="hidden text-sm font-semibold sm:inline">{name}</span>
         <FiChevronDown
           className={`h-4 w-4 text-gray-300 transition-transform duration-200 ${
             open ? "rotate-180" : ""
