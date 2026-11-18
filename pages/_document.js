@@ -4,6 +4,10 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        {/* The app is already dark. Without these, Chrome's Auto Dark Mode and Dark Reader
+            "fix" it and invert small dark images like the timeline covers. */}
+        <meta name="color-scheme" content="dark" />
+        <meta name="darkreader-lock" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

@@ -1,67 +1,219 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { motion } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useAnimationFrame,
+  useMotionValue,
+  useSpring,
+  useTransform,
+} from "framer-motion";
+import { coverUrl } from "@/lib/playback";
 
-const Timeline = ({ tracks, activeIndex, onSelect }) => {
-  const scrollRef = useRef(null);
-  const itemRefs = useRef([]);
+const BASE = 56; // px, resting tile
+const MAX = 84; // px, tile right under the cursor
+const REACH = 150; // px from the cursor where magnification fades out
+const DRAG_THRESHOLD = 5; // px of mouse travel before a press becomes a drag, not a click
 
-  // Keep the active cover centered as it changes.
+// Magnify only with a real mouse on a wide screen; touch gets plain swipe + snap.
+function useCanMagnify() {
+  const [can, setCan] = useState(false);
   useEffect(() => {
-    const el = itemRefs.current[activeIndex];
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    }
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 640px)");
+    const update = () => setCan(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return can;
+}
+
+// Dock-style tile: its size follows the cursor's distance, so neighbours grow a little too.
+const MagnifiedTile = ({ mouseX, refCb, children, ...props }) => {
+  const ref = useRef(null);
+  const distance = useTransform(mouseX, (x) => {
+    const b = ref.current?.getBoundingClientRect();
+    return b ? x - b.left - b.width / 2 : Infinity;
+  });
+  const size = useSpring(useTransform(distance, [-REACH, 0, REACH], [BASE, MAX, BASE]), {
+    mass: 0.1,
+    stiffness: 170,
+    damping: 14,
+  });
+  return (
+    <motion.button
+      {...props}
+      ref={(el) => {
+        ref.current = el;
+        refCb(el);
+      }}
+      style={{ width: size, height: size }}
+    >
+      {children}
+    </motion.button>
+  );
+};
+
+const Timeline = ({ items, activeIndex, onSelect }) => {
+  const wrapRef = useRef(null);
+  const scrollRef = useRef(null);
+  const labelRef = useRef(null);
+  const itemRefs = useRef({}); // keyed by the track's index in the full playlist
+  const drag = useRef(null);
+  const suppressClick = useRef(false);
+  const mouseX = useMotionValue(Infinity);
+  const labelX = useMotionValue(0);
+  const labelY = useMotionValue(0);
+  const [hovered, setHovered] = useState(null);
+  const canMagnify = useCanMagnify();
+
+  // Keep the active cover in view as it changes.
+  useEffect(() => {
+    itemRefs.current[activeIndex]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [activeIndex]);
 
-  if (!tracks.length) return null;
+  // A plain mouse wheel only scrolls vertically; turn it into timeline scrolling.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollBy({ left: e.deltaY });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [items.length]);
+
+  // The label lives outside the scroller (which clips), follows the hovered tile while it
+  // animates, and is clamped so it never runs off the first or last tile's edge.
+  useAnimationFrame(() => {
+    const tile = hovered != null && itemRefs.current[hovered];
+    const wrap = wrapRef.current;
+    const label = labelRef.current;
+    if (!tile || !wrap || !label) return;
+    const t = tile.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    const half = label.offsetWidth / 2;
+    const center = Math.min(Math.max(t.left + t.width / 2 - w.left, half + 4), w.width - half - 4);
+    labelX.set(center - half);
+    labelY.set(t.top - w.top - label.offsetHeight - 8);
+  });
+
+  const onPointerDown = (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    drag.current = { x: e.clientX, left: scrollRef.current.scrollLeft, moved: false };
+    const end = () => {
+      suppressClick.current = !!drag.current?.moved; // the click that follows a drag is not a pick
+      drag.current = null;
+      window.removeEventListener("pointerup", end);
+    };
+    window.addEventListener("pointerup", end);
+  };
+
+  const onPointerMove = (e) => {
+    if (e.pointerType !== "mouse") return;
+    mouseX.set(e.clientX);
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > DRAG_THRESHOLD) d.moved = true;
+    if (d.moved) scrollRef.current.scrollLeft = d.left - dx;
+  };
+
+  if (!items.length) {
+    return <p className="py-10 text-center text-sm text-gray-500">No matches in this playlist.</p>;
+  }
+
+  const hoveredTrack = items.find((x) => x.index === hovered)?.track;
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div ref={wrapRef} className="relative flex flex-col items-center gap-1">
+      <AnimatePresence>
+        {hoveredTrack && (
+          <motion.span
+            ref={labelRef}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{ x: labelX, y: labelY }}
+            className="pointer-events-none absolute left-0 top-0 z-20 max-w-[240px] truncate whitespace-nowrap rounded-md bg-black px-2.5 py-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-white/10"
+          >
+            {hoveredTrack.name}
+          </motion.span>
+        )}
+      </AnimatePresence>
+
       <div
         ref={scrollRef}
-        className="scroll-thin flex w-full max-w-5xl items-end gap-4 overflow-x-auto px-[45%] py-4"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerLeave={() => {
+          mouseX.set(Infinity);
+          setHovered(null);
+        }}
+        onClickCapture={(e) => {
+          if (!suppressClick.current) return;
+          suppressClick.current = false;
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+        onDragStart={(e) => e.preventDefault()}
+        // Fixed height fits the biggest tile, so magnifying never shifts the page.
+        className={`scrollbar-hide w-full max-w-6xl select-none overflow-x-auto ${
+          canMagnify ? "cursor-grab active:cursor-grabbing" : "snap-x snap-mandatory"
+        }`}
+        style={{ height: (canMagnify ? MAX : BASE) + 20 }}
       >
-        {tracks.map((track, index) => {
-          const isActive = index === activeIndex;
-          const cover = track.album?.images?.[0]?.url;
-          return (
-            <motion.button
-              key={`${track.id}-${index}`}
-              ref={(el) => (itemRefs.current[index] = el)}
-              onClick={() => onSelect(index)}
-              className="group relative flex-shrink-0"
-              animate={{ scale: isActive ? 1.35 : 1, opacity: isActive ? 1 : 0.55 }}
-              whileHover={{ opacity: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 22 }}
-              aria-label={track.name}
-            >
-              {/* Tooltip */}
+        {/* w-max + mx-auto: centered while it fits, scrollable once it doesn't.
+            On touch, half-width side padding lets the first and last covers snap to the center. */}
+        <div
+          className={`mx-auto flex h-full w-max items-end gap-3 pb-2 ${
+            canMagnify ? "px-10" : "px-[calc(50vw-22px)]"
+          }`}
+        >
+          {items.map(({ track, index }) => {
+            const isActive = index === activeIndex;
+            const cover = coverUrl(track.album?.images, MAX * 2); // 2x for retina
+            const key = `${track.id}-${index}`;
+            const tileProps = {
+              onClick: () => onSelect(index),
+              onPointerEnter: () => setHovered(index),
+              onFocus: () => setHovered(index),
+              onBlur: () => setHovered(null),
+              refCb: (el) => (itemRefs.current[index] = el),
+              className: "group relative flex-shrink-0 snap-center outline-none",
+              "aria-label": track.name,
+              "aria-current": isActive || undefined,
+            };
+            const inner = (
               <span
-                className={`pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-200 ${
-                  isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                }`}
-              >
-                {track.name}
-              </span>
-
-              <span
-                className={`relative block h-14 w-14 overflow-hidden rounded-lg ring-1 transition-all duration-200 ${
-                  isActive ? "ring-2 ring-white" : "ring-white/10 group-hover:ring-white/40"
+                className={`relative block h-full w-full overflow-hidden rounded-xl shadow-md group-focus-visible:ring-2 group-focus-visible:ring-white/70 ${
+                  isActive ? "ring-2 ring-white ring-offset-2 ring-offset-base" : "ring-1 ring-white/10"
                 }`}
               >
                 {cover && (
-                  <Image src={cover} alt={track.name} fill sizes="56px" className="object-cover" />
+                  <Image src={cover} alt="" fill sizes={`${MAX}px`} draggable={false} className="object-cover" />
                 )}
               </span>
-            </motion.button>
-          );
-        })}
+            );
+            if (canMagnify)
+              return (
+                <MagnifiedTile key={key} {...tileProps} mouseX={mouseX}>
+                  {inner}
+                </MagnifiedTile>
+              );
+            const { refCb, ...rest } = tileProps;
+            return (
+              <button key={key} {...rest} ref={refCb} className={`${rest.className} h-11 w-11`}>
+                {inner}
+              </button>
+            );
+          })}
+        </div>
       </div>
-
-      <p className="select-none text-xs tracking-widest text-gray-500">
-        &lt;&lt; scroll timeline &gt;&gt;
-      </p>
+      <p className="select-none text-xs tracking-widest text-gray-500">&lt;&lt; scroll timeline &gt;&gt;&gt;</p>
     </div>
   );
 };

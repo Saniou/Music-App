@@ -1,12 +1,51 @@
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
+import { coverUrl, majorityTone } from "@/lib/playback";
 import { FaSpotify } from "react-icons/fa";
 import { BsPlayFill, BsPauseFill } from "react-icons/bs";
 import { TbPlayerTrackPrevFilled, TbPlayerTrackNextFilled } from "react-icons/tb";
+import PlaybackBar from "./playbackBar";
+
+// A soft sheen over a silver or a black base, like light on a CD.
+const DISC_FINISH = {
+  light:
+    "radial-gradient(circle, transparent 0 15%, rgba(255,255,255,.55) 15.5% 16.5%, transparent 17%), conic-gradient(from 30deg, #cfd2d6, #f4f5f7, #b9bdc3, #e9d9f2, #cde9f0, #f6f0d8, #c2c6cc, #f4f5f7, #cfd2d6)",
+  dark:
+    "radial-gradient(circle, transparent 0 15%, rgba(255,255,255,.14) 15.5% 16.5%, transparent 17%), conic-gradient(from 30deg, #18181b, #2e2e33, #0f0f11, #2a2533, #1c2228, #302b24, #111113, #2e2e33, #18181b)",
+};
+
+// Whether the cover is mostly light or dark, from a 24×24 sample. Spotify's CDN allows CORS,
+// so the canvas isn't tainted; if it ever is, the disc just keeps its current finish.
+function useCoverTone(url) {
+  const [tone, setTone] = useState("light");
+  useEffect(() => {
+    if (!url) return;
+    let alive = true;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const size = 24;
+        const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d", {
+          willReadFrequently: true,
+        });
+        ctx.drawImage(img, 0, 0, size, size);
+        if (alive) setTone(majorityTone(ctx.getImageData(0, 0, size, size).data));
+      } catch {} // tainted canvas: keep the current finish
+    };
+    img.src = url;
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  return tone;
+}
 
 const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, hasPrev }) => {
   const cover = track?.album?.images?.[0]?.url;
-  const spotifyUrl = track?.external_urls?.spotify;
+  const spotifyUrl = track?.url;
+  const tone = useCoverTone(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
 
   return (
     <div className="flex w-full max-w-md flex-col items-center">
@@ -15,7 +54,7 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
         href={spotifyUrl || "#"}
         target="_blank"
         rel="noopener noreferrer"
-        className={`mb-10 flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/10 hover:text-white ${
+        className={`mb-6 flex items-center sm:mb-10 gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/10 hover:text-white ${
           spotifyUrl ? "" : "pointer-events-none opacity-40"
         }`}
       >
@@ -24,29 +63,30 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
       </a>
 
       {/* Cover + disc */}
-      <div className="relative h-64 w-64 sm:h-72 sm:w-72">
-        {/* Disc sliding out behind the cover */}
+      <div className="relative h-52 w-52 sm:h-72 sm:w-72">
+        {/* CD centered behind the cover, sliding out to the right. Positioned with inset, not
+            translate classes: framer-motion owns `transform`, so it would drop them. */}
         <motion.div
-          className="absolute left-1/2 top-1/2 h-[92%] w-[92%] -translate-y-1/2"
-          animate={{ x: isPlaying ? "18%" : "6%" }}
+          className="absolute inset-[4%] z-0"
+          initial={false}
+          animate={{ x: isPlaying ? "30%" : "20%" }}
           transition={{ type: "spring", stiffness: 120, damping: 20 }}
-          style={{ zIndex: 0 }}
         >
           <div
-            className={`h-full w-full rounded-full shadow-2xl ${isPlaying ? "animate-spin-slow" : ""}`}
-            style={{
-              background:
-                "repeating-radial-gradient(circle at center, #0d0d0f 0px, #17171b 2px, #0d0d0f 4px), radial-gradient(circle at center, #2a2a2f 0%, #050506 70%)",
-            }}
+            className={`relative h-full w-full overflow-hidden rounded-full shadow-xl ring-1 ring-black/30 ${
+              isPlaying ? "animate-spin-slow" : ""
+            }`}
           >
-            <div className="flex h-full w-full items-center justify-center">
-              <div className="relative h-[38%] w-[38%] overflow-hidden rounded-full ring-2 ring-black/60">
-                {cover && (
-                  <Image src={cover} alt="" fill sizes="120px" className="object-cover opacity-90" />
-                )}
-                <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-base ring-2 ring-black/50" />
-              </div>
-            </div>
+            {/* Both finishes stacked; the cover's tone crossfades between them. */}
+            {Object.entries(DISC_FINISH).map(([name, background]) => (
+              <div
+                key={name}
+                className="absolute inset-0 transition-opacity duration-700"
+                style={{ background, opacity: tone === name ? 1 : 0 }}
+              />
+            ))}
+            {/* Center hole */}
+            <div className="absolute left-1/2 top-1/2 h-[11%] w-[11%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-base ring-1 ring-black/30" />
           </div>
         </motion.div>
 
@@ -68,7 +108,8 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
       </div>
 
       {/* Track meta */}
-      <div className="mt-8 h-14 text-center">
+      {/* min-h, not h: a long title gets two lines instead of spilling over the progress bar. */}
+      <div className="mt-5 min-h-[3.5rem] w-full px-2 text-center sm:mt-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={track?.id ?? "empty-meta"}
@@ -77,13 +118,17 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.3 }}
           >
-            <p className="text-sm text-gray-400">
+            <p className="truncate text-sm text-gray-400">
               {track?.artists?.map((a) => a.name).join(", ") || "—"}
             </p>
-            <h2 className="mt-0.5 text-xl font-semibold">{track?.name ?? "Nothing playing"}</h2>
+            <h2 className="mt-0.5 line-clamp-2 text-lg font-semibold leading-snug sm:text-xl" title={track?.name}>
+              {track?.name ?? "Nothing playing"}
+            </h2>
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <PlaybackBar />
 
       {/* Controls */}
       <div className="mt-6 flex items-center gap-2 rounded-full bg-white/5 px-3 py-2 ring-1 ring-white/10">

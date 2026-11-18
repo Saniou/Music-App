@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  color-scheme: dark;
+}
+
 html,
 body {
   padding: 0;
@@ -36,6 +40,81 @@ body {
   background: transparent;
 }
 
+/* Thin slider: a 16px tall hit area with a 4px track drawn inside it; the filled part comes
+   from --pct (set inline), the thumb appears on hover/focus/drag. The native one draws a gap
+   around its thumb in the dark color scheme. */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #fff var(--pct, 0%), rgba(255, 255, 255, 0.18) var(--pct, 0%));
+}
+.range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #fff;
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px; /* (track 4px - thumb 12px) / 2: WebKit aligns the thumb to the track's top */
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+/* Vendor pseudo-elements stay in separate rules: one unknown selector drops the whole list. */
+.range:hover::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb,
+.range:active::-webkit-slider-thumb {
+  opacity: 1;
+}
+.range:hover::-moz-range-thumb,
+.range:focus-visible::-moz-range-thumb,
+.range:active::-moz-range-thumb {
+  opacity: 1;
+}
+@media (hover: none) {
+  /* No hover on touch: keep the thumb visible so it can be grabbed. */
+  .range::-webkit-slider-thumb {
+    opacity: 1;
+  }
+  .range::-moz-range-thumb {
+    opacity: 1;
+  }
+}
+.range:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 4px;
+}
+.range:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
 @layer components {
   .icon-btn {
     @apply cursor-pointer text-gray-400 transition-colors duration-200 hover:text-white;
@@ -48,6 +127,13 @@ body {
   }
   to {
     opacity: 0.2;
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
   }
 }
 

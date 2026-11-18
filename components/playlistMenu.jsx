@@ -1,27 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useRecoilState } from "recoil";
-import { FiMusic, FiX } from "react-icons/fi";
-import { playlistIdState } from "@/atoms/playlistAtoms";
-import useSpotify from "@/hooks/useSpotify";
+import { FiLock, FiMusic, FiX } from "react-icons/fi";
+import { canReadItems, playlistTotal, usePlayer } from "@/store/player";
+import { coverUrl } from "@/lib/playback";
 
 const PlaylistMenu = () => {
-  const spotifyApi = useSpotify();
-  const { data: session } = useSession();
-  const [playlists, setPlaylists] = useState([]);
-  const [playlistId, setPlaylistId] = useRecoilState(playlistIdState);
+  const playlists = usePlayer((s) => s.playlists); // loaded once by Experience
+  const userId = usePlayer((s) => s.userId);
+  const playlistId = usePlayer((s) => s.playlistId);
+  const setPlaylistId = usePlayer((s) => s.selectPlaylist);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-
-  useEffect(() => {
-    if (!spotifyApi.getAccessToken()) return;
-    spotifyApi
-      .getUserPlaylists({ limit: 50 })
-      .then((data) => setPlaylists(data.body.items))
-      .catch((e) => console.error("Failed to load playlists", e));
-  }, [session, spotifyApi]);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -61,7 +51,8 @@ const PlaylistMenu = () => {
             </div>
             {playlists.map((pl) => {
               const isActive = pl.id === playlistId;
-              const cover = pl.images?.[0]?.url;
+              const cover = coverUrl(pl.images, 80);
+              const playOnly = !canReadItems(pl, userId);
               return (
                 <button
                   key={pl.id}
@@ -69,6 +60,7 @@ const PlaylistMenu = () => {
                     setPlaylistId(pl.id);
                     setOpen(false);
                   }}
+                  title={playOnly ? "Play-only: Spotify hides the track list of playlists you don’t own" : undefined}
                   className={`flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors duration-200 ${
                     isActive ? "bg-hover" : "hover:bg-hover"
                   }`}
@@ -82,8 +74,15 @@ const PlaylistMenu = () => {
                     <span className={`block truncate text-sm ${isActive ? "text-spotify" : "text-white"}`}>
                       {pl.name}
                     </span>
-                    <span className="block truncate text-xs text-gray-400">
-                      {pl.tracks?.total ?? 0} songs
+                    <span className="flex items-center gap-1 truncate text-xs text-gray-400">
+                      {playlistTotal(pl)} songs
+                      {playOnly && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <FiLock className="h-3 w-3 shrink-0" aria-hidden />
+                          play-only
+                        </>
+                      )}
                     </span>
                   </span>
                 </button>
