@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { spotifyApi } from "@/hooks/useSpotify";
-import { apiGet, apiSend, qs } from "@/lib/api";
+import { apiGet, apiSend, backOff, isRateLimited, qs } from "@/lib/api";
 import {
   REPEAT_MODES,
   currentPosition,
@@ -13,6 +13,7 @@ import {
 
 const TRACK_LIMIT = 150; // how many tracks to page in
 const POLL_GRACE_MS = 1500; // ignore polls right after a command so stale state doesn't undo the optimistic UI
+const IDLE_POLL_MS = 15_000; // poll interval while nothing plays (5s otherwise, see usePlayback)
 const VOLUME_HOLD_MS = 2500; // after a local volume change, ignore reported volume this long
 
 // Collections other than playlists, keyed like playlist ids ("album:<id>" too), so selecting,
@@ -236,6 +237,7 @@ export const usePlayer = create((set, get) => {
 
     notice: null,
     lastCommandAt: 0,
+    lastIdlePollAt: 0,
 
     loadPlaylists: async (userId) => {
       set({ userId });
@@ -495,6 +497,10 @@ export const usePlayer = create((set, get) => {
     syncFromApi: async ({ force = false } = {}) => {
       const settling = () => !force && Date.now() - get().lastCommandAt < POLL_GRACE_MS;
       if (!spotifyApi.getAccessToken() || settling()) return;
+      if (!force && isRateLimited()) return; // let Spotify's backoff run out first
+      // Nothing playing anywhere: poll a third as often, the rate limit is shared with everything else.
+      if (!force && !get().track && Date.now() - get().lastIdlePollAt < IDLE_POLL_MS) return;
+      if (!get().track) set({ lastIdlePollAt: Date.now() });
       try {
         // Playing in this tab: ask the SDK, not the Web API. Both report the position as of the last
         // state change (e.g. the seek target), not now, so a poll would yank the bar back to it.
@@ -526,6 +532,7 @@ export const usePlayer = create((set, get) => {
             Date.now() > get().volumeHoldUntil && { volume: body.device.volume_percent / 100 }),
         });
       } catch (e) {
+        if (e?.statusCode === 429) backOff(e.headers?.["retry-after"]);
         console.warn("Playback state sync failed", e?.body ?? e);
       }
     },
