@@ -5,6 +5,7 @@ import { FiPlay, FiPlus, FiSearch, FiX } from "react-icons/fi";
 import { apiGet, qs } from "@/lib/api";
 import { coverUrl, explainError, formatTime, normalizeTrack } from "@/lib/playback";
 import { readHistory, usePlayer } from "@/store/player";
+import { Loader } from "./equalizer";
 import { formatListening, weekStats } from "@/lib/history";
 
 const EASE = [0.22, 1, 0.36, 1];
@@ -32,7 +33,7 @@ const artistNames = (t) => t.artists?.map((a) => a.name).join(", ");
 
 const Status = ({ loading, error, empty }) =>
   loading ? (
-    <p className="px-2 py-8 text-center text-sm text-gray-400">Loading…</p>
+    <Loader />
   ) : error ? (
     <p className="px-2 py-8 text-center text-sm text-gray-300">{explainError(error)}</p>
   ) : empty ? (
@@ -101,7 +102,7 @@ const openAlbum = (id) => {
   selectPlaylist(`album:${id}`);
   closeDrawer();
 };
-const openArtist = (id) => usePlayer.getState().openArtist(id);
+const openArtist = (id, name) => usePlayer.getState().openArtist(id, name);
 
 // The same pill as "Search this playlist".
 const Pill = ({ children }) => (
@@ -154,7 +155,7 @@ const SearchView = () => {
           {tracks.length > 0 && (
             <Section title="Songs">
               {tracks.map((t, i) => (
-                <TrackRow key={t.uri} track={t} onPlay={() => playTracks(tracks, i)} />
+                <TrackRow key={t.uri} track={t} onPlay={() => playTracks(tracks, i, { label: "Search" })} />
               ))}
             </Section>
           )}
@@ -162,7 +163,7 @@ const SearchView = () => {
             <Section title="Artists">
               <div className="grid grid-cols-3 gap-1">
                 {artists.map((a) => (
-                  <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} onClick={() => openArtist(a.id)} />
+                  <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} onClick={() => openArtist(a.id, a.name)} />
                 ))}
               </div>
             </Section>
@@ -278,7 +279,7 @@ const YourWeek = () => {
         {stats.topArtists.map((a, i) => (
           <button
             key={a.id ?? a.name}
-            onClick={() => a.id && openArtist(a.id)}
+            onClick={() => a.id && openArtist(a.id, a.name)}
             disabled={!a.id}
             className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/5"
           >
@@ -369,7 +370,7 @@ const SpotifyTop = () => {
         <Status loading={loading} error={error} empty={data && !data.items?.length && "Not enough listening yet."} />
         <div className="grid grid-cols-3 gap-1">
           {(data?.items ?? []).map((a, i) => (
-            <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} subtitle={`#${i + 1}`} onClick={() => openArtist(a.id)} />
+            <Tile key={a.id} round image={coverUrl(a.images, 240)} title={a.name} subtitle={`#${i + 1}`} onClick={() => openArtist(a.id, a.name)} />
           ))}
         </div>
       </Section>

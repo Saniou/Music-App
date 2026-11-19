@@ -6,6 +6,7 @@ import { BsDownload, BsShare } from "react-icons/bs";
 import { coverUrl, currentPosition } from "@/lib/playback";
 import { activeLine, fetchLyrics } from "@/lib/lyrics";
 import { usePlayer } from "@/store/player";
+import { Loader } from "./equalizer";
 
 const W = 1080;
 const H = 1350; // 4:5, what Instagram and most feeds show uncropped
@@ -194,7 +195,7 @@ const Modal = ({ track, onClose }) => {
             // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, nothing to optimize
             <img src={card.url} alt={`Card for ${track.name}`} className="h-full w-full object-cover" />
           ) : (
-            <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">Making your card…</p>
+            <Loader text="Making your card…" className="absolute inset-0" />
           )}
         </div>
         {line && (

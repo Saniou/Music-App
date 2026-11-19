@@ -4,7 +4,7 @@ import { usePlayer } from "@/store/player";
 import { currentPosition } from "@/lib/playback";
 
 const SDK_SRC = "https://sdk.scdn.co/spotify-player.js";
-const POLL_MS = 5000;
+const POLL_MS = 8000; // every request counts against the account-wide Dev Mode quota
 const LISTEN_TICK_MS = 5000;
 
 // Wires the player store to the outside world: the Web Playback SDK (this tab as a Spotify
@@ -85,6 +85,16 @@ export default function usePlayback() {
     }, Math.max(0, ms));
     return () => clearTimeout(id);
   }, [sleep, sleepUri, sleepPlaying, sleepClock]);
+
+  // When our clock says the song is over, ask what plays now instead of waiting for the next poll
+  // (up to 8s, or longer if Spotify made us back off), so the next song shows right away.
+  useEffect(() => {
+    const s = usePlayer.getState();
+    if (!s.isPlaying || !s.durationMs || !sleepUri) return;
+    const ms = s.durationMs - currentPosition(s) + 1200; // a beat after the end, once Spotify has moved on
+    const id = setTimeout(() => usePlayer.getState().syncFromApi({ force: true }), Math.max(0, ms));
+    return () => clearTimeout(id);
+  }, [sleepUri, sleepPlaying, sleepClock]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;

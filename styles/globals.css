@@ -126,6 +126,22 @@ body {
   opacity: 0.3;
 }
 
+/* Equalizer bars (components/equalizer.jsx): each bar bounces from the bottom at its own speed. */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eq-bar {
+  transform-origin: bottom;
+  transform: scaleY(0.25);
+  animation: eq 1s ease-in-out infinite;
+}
+
 /* Karaoke word: the highlight (--hl, white by default) fills left to right up to --p (set per frame),
    with a soft edge. */
 .karaoke-word {

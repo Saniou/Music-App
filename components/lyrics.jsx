@@ -9,6 +9,7 @@ import { usePlayer } from "@/store/player";
 import { coverUrl, currentPosition } from "@/lib/playback";
 import useCoverColors from "@/hooks/useCoverColors";
 import { activeLine, fetchLyrics, wordEnd } from "@/lib/lyrics";
+import { Loader } from "./equalizer";
 
 // Text size per setting, for the side panel and for the phone's full screen.
 const SIZES = {
@@ -249,7 +250,7 @@ const LyricsBody = ({ track, wide }) => {
   }`;
 
   let content;
-  if (loading) content = <p className="text-center text-gray-400">Looking for lyrics…</p>;
+  if (loading) content = <Loader text="Looking for lyrics…" className="py-0" />;
   else if (error) content = <p className="text-center text-gray-400">Couldn’t reach the lyrics service. Try again later.</p>;
   else if (!data) content = <p className="text-center text-gray-400">No lyrics found for this song.</p>;
   else if (data.instrumental) content = <p className="text-center text-2xl font-bold text-gray-300">♪ Instrumental ♪</p>;

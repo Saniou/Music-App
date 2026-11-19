@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { spotifyApi } from "@/hooks/useSpotify";
-import { apiGet, apiSend, backOff, isRateLimited, qs } from "@/lib/api";
+import { apiGet, apiSend, backOff, isQuotaError, isQuotaExceeded, isRateLimited, markQuotaExceeded, qs } from "@/lib/api";
 import {
   REPEAT_MODES,
   coverUrl,
@@ -109,6 +109,21 @@ const readLyricsSettings = () => {
   } catch {
     return LYRICS_DEFAULTS; // no storage (server render, private mode): defaults
   }
+};
+
+// Small UI state remembered in this browser (e.g. lyrics open).
+const UI_KEY = "musify:ui:v1";
+const readUiState = () => {
+  try {
+    return JSON.parse(localStorage.getItem(UI_KEY)) ?? {};
+  } catch {
+    return {}; // server render or blocked storage
+  }
+};
+const writeUiState = (patch) => {
+  try {
+    localStorage.setItem(UI_KEY, JSON.stringify({ ...readUiState(), ...patch }));
+  } catch {}
 };
 
 // Our own listening log (Spotify only returns the last 50 plays), per account, in this browser.
@@ -247,7 +262,7 @@ export const usePlayer = create((set, get) => {
       remember(playlistId, { discovered: tracks.slice(-DISCOVERED_CAP).map(slimTrack) });
     }
     const index = indexOfTrack(tracks, p.track);
-    set({ ...p, ...clock, contextUri, ...(index >= 0 && { activeIndex: index }) });
+    set({ ...p, ...clock, contextUri, ...(index >= 0 && { activeIndex: index, playingFrom: null }) });
     rememberProgress();
     // Once per track, not on every poll, and after a beat so Spotify's queue has caught up.
     if (p.track?.uri !== prevUri) {
@@ -262,7 +277,7 @@ export const usePlayer = create((set, get) => {
     if (!playlist?.uri) return;
     sdkPlayer?.activateElement?.();
     const base = { device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: playlist.uri };
-    return command({ isPlaying: true }, async () => {
+    return command({ isPlaying: true, playingFrom: null }, async () => {
       if (!trackUri) return spotifyApi.play(base);
       try {
         await spotifyApi.play({ ...base, offset: { uri: trackUri }, position_ms: positionMs });
@@ -418,7 +433,7 @@ export const usePlayer = create((set, get) => {
       sdkPlayer?.activateElement?.(); // some browsers only allow audio after a user gesture
       const t = tracks[i];
       return command(
-        { activeIndex: i, track: t, isPlaying: true, positionMs, positionAt: Date.now(), durationMs: t.durationMs ?? 0 },
+        { activeIndex: i, track: t, isPlaying: true, positionMs, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: null },
         // The whole list goes in as the queue, so Spotify's own next/shuffle/repeat work on it.
         () =>
           spotifyApi.play({
@@ -477,13 +492,14 @@ export const usePlayer = create((set, get) => {
     },
 
     // Play tracks that aren't the selected collection (search results), as their own queue.
-    playTracks: (list, i = 0) => {
+    // `from`: where it was started, for the "Playing from" chip ({ label, artistId?, artistName? }).
+    playTracks: (list, i = 0, from = null) => {
       const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
       const t = list[i];
       if (!t) return;
       sdkPlayer?.activateElement?.();
       return command(
-        { track: t, isPlaying: true, positionMs: 0, positionAt: Date.now(), durationMs: t.durationMs ?? 0 },
+        { track: t, isPlaying: true, positionMs: 0, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: from },
         () =>
           spotifyApi.play({
             device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
@@ -508,7 +524,7 @@ export const usePlayer = create((set, get) => {
     // Liked state per track uri, filled lazily for the playing track.
     liked: {},
     checkLiked: async (uri) => {
-      if (!uri || uri in get().liked) return;
+      if (!uri || uri in get().liked || isQuotaExceeded("library")) return; // known, or not worth the quota now
       try {
         const [isLiked] = await apiGet(`/me/library/contains?${qs({ uris: uri })}`);
         set((s) => ({ liked: { ...s.liked, [uri]: !!isLiked } }));
@@ -533,28 +549,38 @@ export const usePlayer = create((set, get) => {
 
     // Play an artist (or album) as a Spotify context: for an artist that's their popular songs, which
     // also stands in for the top-tracks endpoint Dev Mode removed.
-    playUri: (contextUri) => {
+    playUri: (contextUri, from = null) => {
       const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
       sdkPlayer?.activateElement?.();
-      return command({ isPlaying: true }, () =>
+      return command({ isPlaying: true, playingFrom: from }, () =>
         spotifyApi.play({ device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: contextUri })
       );
     },
 
     // Artist page (full screen, over the player). Also a history entry, so the browser's Back closes it.
     artistId: null,
-    openArtist: (artistId) => {
+    artistName: null, // known from where it was opened, so the page has a title before (or without) the API
+    openArtist: (artistId, artistName = null) => {
       if (typeof window !== "undefined" && history.state?.artistId !== artistId)
-        history.pushState({ artistId }, "", `#artist/${artistId}`);
-      set({ artistId, drawer: null });
+        history.pushState({ artistId, artistName }, "", `#artist/${artistId}`); // name: the page's details are looked up by it
+      set({ artistId, artistName, drawer: null });
     },
     closeArtist: () => {
       if (typeof window !== "undefined" && history.state?.artistId) return history.back(); // popstate clears it
       set({ artistId: null });
     },
 
-    lyricsOpen: false,
-    toggleLyrics: () => set((s) => ({ lyricsOpen: !s.lyricsOpen })),
+    // Remembered across reloads: lyrics left open stay open.
+    lyricsOpen: readUiState().lyricsOpen ?? false,
+    toggleLyrics: () => {
+      const lyricsOpen = !get().lyricsOpen;
+      set({ lyricsOpen });
+      writeUiState({ lyricsOpen });
+    },
+
+    // Where the playing music was started when it isn't the selected collection (artist page,
+    // search); cleared once something from the collection plays.
+    playingFrom: null,
     lyricsSettings: readLyricsSettings(),
     setLyricsSetting: (key, value) => {
       const lyricsSettings = { ...get().lyricsSettings, [key]: value };
@@ -629,15 +655,11 @@ export const usePlayer = create((set, get) => {
     syncFromApi: async ({ force = false } = {}) => {
       const settling = () => !force && Date.now() - get().lastCommandAt < POLL_GRACE_MS;
       if (!spotifyApi.getAccessToken() || settling()) return;
-      if (!force && isRateLimited()) return; // let Spotify's backoff run out first
-      // Nothing playing anywhere: poll a third as often, the rate limit is shared with everything else.
-      if (!force && !get().track && Date.now() - get().lastIdlePollAt < IDLE_POLL_MS) return;
-      if (!get().track) set({ lastIdlePollAt: Date.now() });
       try {
-        // Playing in this tab: ask the SDK, not the Web API. Both report the position as of the last
-        // state change (e.g. the seek target), not now, so a poll would yank the bar back to it.
-        // Positions come from SDK events instead (they fire at the change); the poll only notices a
-        // new track or another device taking over.
+        // Playing in this tab: ask the SDK, not the Web API. It's free (no quota, no rate limit), so
+        // it runs even while Spotify makes us wait. Both report the position as of the last state
+        // change (e.g. the seek target), not now, so a poll would yank the bar back to it: positions
+        // come from SDK events instead; the poll only notices a new track or another device taking over.
         const { sdkPlayer, sdkDeviceId, activeDeviceId } = get();
         if (sdkPlayer && sdkDeviceId && activeDeviceId === sdkDeviceId) {
           const state = await sdkPlayer.getCurrentState();
@@ -648,6 +670,11 @@ export const usePlayer = create((set, get) => {
           }
           // null: another device took over; fall through to the Web API.
         }
+        // The Web API costs quota: wait out a backoff or the player bucket's quota pause.
+        if (!force && (isRateLimited() || isQuotaExceeded("player"))) return;
+        // Nothing playing anywhere: poll a third as often.
+        if (!force && !get().track && Date.now() - get().lastIdlePollAt < IDLE_POLL_MS) return;
+        if (!get().track) set({ lastIdlePollAt: Date.now() });
         const { body } = await spotifyApi.getMyCurrentPlaybackState();
         if (settling()) return;
         if (!body?.device) return set({ track: null, contextUri: null, isPlaying: false, activeDeviceId: null });
@@ -664,7 +691,8 @@ export const usePlayer = create((set, get) => {
             Date.now() > get().volumeHoldUntil && { volume: body.device.volume_percent / 100 }),
         });
       } catch (e) {
-        if (e?.statusCode === 429) backOff(e.headers?.["retry-after"]);
+        if (isQuotaError(e)) markQuotaExceeded("player", e.headers?.["retry-after"]);
+        else if (e?.statusCode === 429) backOff(e.headers?.["retry-after"]);
         console.warn("Playback state sync failed", e?.body ?? e);
       }
     },

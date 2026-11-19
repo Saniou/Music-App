@@ -3,7 +3,8 @@ import { useSession } from "next-auth/react";
 import { useShallow } from "zustand/react/shallow";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { FiAlertCircle, FiBarChart2, FiList, FiLoader, FiLock, FiSearch, FiX } from "react-icons/fi";
+import { FiAlertCircle, FiBarChart2, FiList, FiLock, FiSearch, FiX } from "react-icons/fi";
+import Equalizer, { Loader } from "./equalizer";
 import Drawer from "./drawer";
 import ArtistPage from "./artistPage";
 import ShortcutsHelp from "./shortcutsHelp";
@@ -39,6 +40,7 @@ const Experience = () => {
   );
   const { loadPlaylists, togglePlay, next, prev, playIndex, resumePlayback } = usePlayer.getState();
   const resume = usePlayer((s) => s.resume);
+  const playingFrom = usePlayer((s) => s.playingFrom);
   // The full playlist object omits the count for playlists the user doesn't own; the library list has it.
   const total = usePlayer((s) => playlistTotal(s.playlists.find((p) => p.id === s.playlistId)) || playlistTotal(s.playlist));
 
@@ -88,11 +90,14 @@ const Experience = () => {
   // A play-only playlist counts as playing only when Spotify plays from *it*; otherwise switching
   // between them would keep showing the previous playlist's track under the new title.
   const playingHere = !!track && (status !== "context" || contextUri === playlist?.uri);
+  // Music the user started from an artist page or search: show it (with "Playing from") rather than
+  // the play-only intro card, or the screen hides what's playing and the way back to the artist.
+  const playingElsewhere = !!track && !!playingFrom;
   const view =
     status === "loading" || status === "idle"
       ? "status"
       : status === "context"
-      ? playingHere
+      ? playingHere || playingElsewhere
         ? "player"
         : "intro"
       : status === "ready" || track
@@ -162,6 +167,8 @@ const Experience = () => {
                     // While Spotify plays, it owns the queue (shuffle/repeat), so skipping is always allowed.
                     hasNext={!!track || activeIndex < tracks.length - 1}
                     hasPrev={!!track || activeIndex > 0}
+                    // Music from elsewhere: a way back to the selected playlist, where it was left off.
+                    backTo={playingElsewhere && playlist?.name ? { label: playlist.name, onClick: resumePlayback } : null}
                   />
                 </div>
                 <Lyrics track={shown} />
@@ -240,7 +247,7 @@ const PlayOnlyIntro = ({ playlist, onPlay, resumeTrack, resumeMs }) => {
         disabled={starting}
         className="mt-6 flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition-transform duration-200 hover:scale-105 disabled:scale-100 disabled:opacity-70"
       >
-        {starting ? <FiLoader className="h-5 w-5 animate-spin" /> : <BsPlayFill className="h-5 w-5" />}
+        {starting ? <Equalizer className="h-4 w-4" /> : <BsPlayFill className="h-5 w-5" />}
         {starting ? "Starting…" : resumeTrack ? "Continue" : "Play playlist"}
       </button>
       {resumeTrack && !starting && (
@@ -356,14 +363,7 @@ const Notice = () => {
 };
 
 const StatusMessage = ({ status }) => {
-  if (status === "loading" || status === "idle") {
-    return (
-      <div className="flex flex-col items-center gap-3 text-gray-400">
-        <FiLoader className="h-7 w-7 animate-spin" />
-        <p className="text-sm">Loading your music…</p>
-      </div>
-    );
-  }
+  if (status === "loading" || status === "idle") return <Loader text="Loading your music…" className="py-0" />;
   const messages = {
     empty:
       "No tracks here. Spotify only shares the tracks of playlists you own or collaborate on — pick one of yours from “Playlists”.",

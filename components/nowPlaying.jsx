@@ -7,6 +7,8 @@ import { BsHeart, BsHeartFill, BsPlayFill, BsPauseFill, BsShare } from "react-ic
 import { usePlayer } from "@/store/player";
 import useCoverColors from "@/hooks/useCoverColors";
 import ShareCard from "./shareCard";
+import Equalizer from "./equalizer";
+import { FiCornerUpLeft } from "react-icons/fi";
 import { TbPlayerTrackPrevFilled, TbPlayerTrackNextFilled } from "react-icons/tb";
 import PlaybackBar from "./playbackBar";
 
@@ -18,13 +20,14 @@ const DISC_FINISH = {
     "radial-gradient(circle, transparent 0 15%, rgba(255,255,255,.14) 15.5% 16.5%, transparent 17%), conic-gradient(from 30deg, #18181b, #2e2e33, #0f0f11, #2a2533, #1c2228, #302b24, #111113, #2e2e33, #18181b)",
 };
 
-const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, hasPrev }) => {
+const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, hasPrev, backTo }) => {
   const cover = track?.album?.images?.[0]?.url;
   const spotifyUrl = track?.url;
   const { tone } = useCoverColors(coverUrl(track?.album?.images, 64)); // the smallest size is plenty
   const [sharing, setSharing] = useState(false);
   const { openArtist, selectPlaylist, toggleLike, checkLiked } = usePlayer.getState();
   const liked = usePlayer((s) => !!s.liked[track?.uri]);
+  const playingFrom = usePlayer((s) => s.playingFrom);
   const albumId = track?.album?.id;
   useEffect(() => {
     checkLiked(track?.uri);
@@ -32,18 +35,53 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
 
   return (
     <div className="flex w-full max-w-md flex-col items-center">
-      {/* Open in Spotify */}
-      <a
-        href={spotifyUrl || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`mb-6 flex items-center sm:mb-10 gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/10 hover:text-white ${
-          spotifyUrl ? "" : "pointer-events-none opacity-40"
-        }`}
-      >
-        <FaSpotify className="h-4 w-4 text-spotify" />
-        Open in Spotify
-      </a>
+      <div className="mb-6 flex max-w-full flex-wrap items-center justify-center gap-2 sm:mb-10">
+        {/* Playing from: shown when the music was started outside the selected collection (an artist
+            page, search), so the screen says where it comes from; click goes back there. */}
+        <AnimatePresence>
+          {playingFrom && (
+            <motion.button
+              key="playing-from"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => playingFrom.artistId && openArtist(playingFrom.artistId, playingFrom.artistName)}
+              disabled={!playingFrom.artistId}
+              className="flex max-w-[16rem] items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-spotify/40 transition-colors duration-200 hover:bg-white/10 hover:text-white disabled:cursor-default"
+            >
+              <Equalizer className="h-3.5 w-3.5 shrink-0 text-spotify" playing={isPlaying} />
+              <span className="truncate">Playing from {playingFrom.label}</span>
+            </motion.button>
+          )}
+          {backTo && (
+            <motion.button
+              key="back-to"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              onClick={backTo.onClick}
+              title={`Continue ${backTo.label} where you left off`}
+              className="flex max-w-[16rem] items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+            >
+              <FiCornerUpLeft className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="truncate">Back to {backTo.label}</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+        <a
+          href={spotifyUrl || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/10 hover:text-white ${
+            spotifyUrl ? "" : "pointer-events-none opacity-40"
+          }`}
+        >
+          <FaSpotify className="h-4 w-4 text-spotify" />
+          Open in Spotify
+        </a>
+      </div>
 
       {/* Cover + disc */}
       <div className="relative h-52 w-52 sm:h-72 sm:w-72">
@@ -115,7 +153,7 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
                     <span key={a.id ?? a.name}>
                       {i > 0 && ", "}
                       {a.id ? (
-                        <button onClick={() => openArtist(a.id)} className="hover:text-white hover:underline">
+                        <button onClick={() => openArtist(a.id, a.name)} className="hover:text-white hover:underline">
                           {a.name}
                         </button>
                       ) : (
