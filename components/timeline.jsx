@@ -28,10 +28,44 @@ function useCanMagnify() {
   return can;
 }
 
-// Dock-style tile: its size follows the cursor's distance, so neighbours grow a little too.
-const MagnifiedTile = ({ mouseX, refCb, children, ...props }) => {
+// Smooth horizontal scrolling: the scroller eases toward a target instead of jumping. Wheel notches
+// add to the target; a released drag throws it with momentum. Plain closure state, driven by rAF.
+const GLIDE_EASE = 0.14; // share of the remaining distance covered per frame
+const MOMENTUM_MS = 260; // how far a throw carries: velocity (px/ms) x this
+function makeGlider(getEl) {
+  let target = null;
+  let raf = 0;
+  const stop = () => {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    target = null;
+  };
+  const step = () => {
+    const el = getEl();
+    if (!el || target === null) return stop();
+    const diff = target - el.scrollLeft;
+    if (Math.abs(diff) < 0.5) {
+      el.scrollLeft = target;
+      return stop();
+    }
+    el.scrollLeft += diff * GLIDE_EASE;
+    raf = requestAnimationFrame(step);
+  };
+  const by = (dx) => {
+    const el = getEl();
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    target = Math.min(max, Math.max(0, (target ?? el.scrollLeft) + dx));
+    if (!raf) raf = requestAnimationFrame(step);
+  };
+  return { by, stop };
+}
+
+// Dock-style tile: its size follows the cursor's distance, so neighbours grow a little too. It also
+// listens to scrollX, so tiles gliding under a still cursor resize as they pass.
+const MagnifiedTile = ({ mouseX, scrollX, refCb, children, ...props }) => {
   const ref = useRef(null);
-  const distance = useTransform(mouseX, (x) => {
+  const distance = useTransform([mouseX, scrollX], ([x]) => {
     const b = ref.current?.getBoundingClientRect();
     return b ? x - b.left - b.width / 2 : Infinity;
   });
@@ -62,28 +96,39 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
   const drag = useRef(null);
   const suppressClick = useRef(false);
   const mouseX = useMotionValue(Infinity);
+  const scrollX = useMotionValue(0);
   const labelX = useMotionValue(0);
   const labelY = useMotionValue(0);
   const [hovered, setHovered] = useState(null);
   const canMagnify = useCanMagnify();
+  // The glider is made once the scroller exists (an effect may read the DOM; render may not).
+  const glider = useRef(null);
+  const hasItems = items.length > 0;
 
   // Keep the active cover in view as it changes.
   useEffect(() => {
+    glider.current?.stop(); // the browser's smooth scroll takes over
     itemRefs.current[activeIndex]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [activeIndex]);
 
-  // A plain mouse wheel only scrolls vertically; turn it into timeline scrolling.
+  // A plain mouse wheel only scrolls vertically; turn it into eased timeline scrolling.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const g = (glider.current = makeGlider(() => el));
     const onWheel = (e) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // trackpad sideways swipes scroll natively
       e.preventDefault();
-      el.scrollBy({ left: e.deltaY });
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1; // lines / pages / px
+      g.by(e.deltaY * unit);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [items.length]);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      g.stop();
+      glider.current = null;
+    };
+  }, [hasItems]);
 
   // The label lives outside the scroller (which clips), follows the hovered tile while it
   // animates, and is clamped so it never runs off the first or last tile's edge.
@@ -102,9 +147,13 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
 
   const onPointerDown = (e) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
-    drag.current = { x: e.clientX, left: scrollRef.current.scrollLeft, moved: false };
+    glider.current?.stop(); // grabbing stops a glide in progress
+    drag.current = { x: e.clientX, left: scrollRef.current.scrollLeft, moved: false, lastX: e.clientX, lastT: e.timeStamp, v: 0 };
     const end = () => {
-      suppressClick.current = !!drag.current?.moved; // the click that follows a drag is not a pick
+      const d = drag.current;
+      suppressClick.current = !!d?.moved; // the click that follows a drag is not a pick
+      // Throw: keep going in the drag's direction and ease to a stop.
+      if (d?.moved && Math.abs(d.v) > 0.05) glider.current?.by(-d.v * MOMENTUM_MS);
       drag.current = null;
       window.removeEventListener("pointerup", end);
     };
@@ -118,7 +167,13 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
     if (!d) return;
     const dx = e.clientX - d.x;
     if (Math.abs(dx) > DRAG_THRESHOLD) d.moved = true;
-    if (d.moved) scrollRef.current.scrollLeft = d.left - dx;
+    if (!d.moved) return;
+    scrollRef.current.scrollLeft = d.left - dx;
+    // Velocity in px/ms, smoothed so one jittery sample doesn't decide the throw.
+    const dt = e.timeStamp - d.lastT;
+    if (dt > 0) d.v = 0.7 * ((e.clientX - d.lastX) / dt) + 0.3 * d.v;
+    d.lastX = e.clientX;
+    d.lastT = e.timeStamp;
   };
 
   if (!items.length) {
@@ -149,6 +204,7 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
         ref={scrollRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
+        onScroll={(e) => scrollX.set(e.currentTarget.scrollLeft)}
         onPointerLeave={() => {
           mouseX.set(Infinity);
           setHovered(null);
@@ -200,7 +256,7 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
             );
             if (canMagnify)
               return (
-                <MagnifiedTile key={key} {...tileProps} mouseX={mouseX}>
+                <MagnifiedTile key={key} {...tileProps} mouseX={mouseX} scrollX={scrollX}>
                   {inner}
                 </MagnifiedTile>
               );
