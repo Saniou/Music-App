@@ -8,6 +8,7 @@ import Equalizer, { Loader } from "./equalizer";
 import Drawer from "./drawer";
 import ArtistPage from "./artistPage";
 import ShortcutsHelp from "./shortcutsHelp";
+import Ambient from "./ambient";
 import PipPlayer from "./pipPlayer";
 import Lyrics from "./lyrics";
 import { BsPlayFill } from "react-icons/bs";
@@ -72,6 +73,7 @@ const Experience = () => {
         "/": () => searchRef.current?.focus(),
         "?": () => p.toggleHelp(),
         l: () => p.toggleLyrics(),
+        f: () => p.toggleAmbient(),
         m: () => p.toggleMute(),
         " ": () => p.togglePlay(),
         ArrowRight: () => (e.shiftKey ? p.seekBy(10_000) : p.next()),
@@ -138,6 +140,7 @@ const Experience = () => {
       <ArtistPage />
       <Drawer />
       <ShortcutsHelp />
+      <Ambient />
       <PipPlayer />
 
       <Notice />

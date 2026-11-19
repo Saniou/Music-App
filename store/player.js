@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { spotifyApi } from "@/hooks/useSpotify";
-import { apiGet, apiSend, backOff, isQuotaError, isQuotaExceeded, isRateLimited, markQuotaExceeded, qs } from "@/lib/api";
+import { spotifyAuth } from "@/hooks/useSpotify";
+import { apiGet, apiSend, isQuotaExceeded, isRateLimited, player, qs } from "@/lib/api";
 import {
   REPEAT_MODES,
   coverUrl,
@@ -59,11 +59,10 @@ async function loadCollection(key) {
 }
 
 // Spotify's Feb 2026 Dev Mode changes replaced GET /playlists/{id}/tracks with /items (and each
-// entry's `track` with `item`); spotify-web-api-node still calls the removed path, so fetch directly.
+// entry's `track` with `item`).
 // Only playlists the user owns or collaborates on return items.
 const getPlaylistItems = (id, offset, limit) => apiGet(`/playlists/${id}/items?limit=${limit}&offset=${offset}`);
 // The queue is still open in Dev Mode: while a playlist plays it lists the next ~20 tracks.
-// (spotify-web-api-node can only add to the queue, not read it.)
 const getQueue = () => apiGet("/me/player/queue");
 const entryTrack = (entry) => entry?.item ?? entry?.track; // new name, then the pre-2026 one
 export const playlistTotal = (p) => p?.items?.total ?? p?.tracks?.total ?? 0;
@@ -102,7 +101,8 @@ const slimTrack = (t) => ({
 
 // Lyrics display settings, remembered in this browser.
 const LYRICS_SETTINGS_KEY = "musify:lyrics-settings:v1";
-export const LYRICS_DEFAULTS = { size: "m", align: "center", wordByWord: true, coverColor: false };
+// script: how Japanese lyrics show: "original" (default), "romaji", or "both" (romaji under each line).
+export const LYRICS_DEFAULTS = { size: "m", align: "center", wordByWord: true, coverColor: false, script: "original" };
 const readLyricsSettings = () => {
   try {
     return { ...LYRICS_DEFAULTS, ...JSON.parse(localStorage.getItem(LYRICS_SETTINGS_KEY)) };
@@ -278,12 +278,12 @@ export const usePlayer = create((set, get) => {
     sdkPlayer?.activateElement?.();
     const base = { device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: playlist.uri };
     return command({ isPlaying: true, playingFrom: null }, async () => {
-      if (!trackUri) return spotifyApi.play(base);
+      if (!trackUri) return player.play(base);
       try {
-        await spotifyApi.play({ ...base, offset: { uri: trackUri }, position_ms: positionMs });
+        await player.play({ ...base, offset: { uri: trackUri }, position_ms: positionMs });
       } catch (e) {
         if ([401, 403, 429].includes(e?.statusCode)) throw e;
-        await spotifyApi.play(base); // the saved track may have left the playlist: start from the top
+        await player.play(base); // the saved track may have left the playlist: start from the top
       }
     });
   };
@@ -325,7 +325,7 @@ export const usePlayer = create((set, get) => {
       set({ userId });
       if (get().playlists.length) return;
       try {
-        const { body } = await spotifyApi.getUserPlaylists({ limit: 50 });
+        const body = await apiGet("/me/playlists?limit=50");
         const items = body.items ?? [];
         set({ playlists: items });
         if (get().playlistId) return;
@@ -381,7 +381,7 @@ export const usePlayer = create((set, get) => {
           return showTracks(meta, raw.map(normalizeTrack).filter((t) => t?.id && !seen.has(t.uri) && seen.add(t.uri)));
         }
 
-        const meta = await spotifyApi.getPlaylist(id);
+        const meta = { body: await apiGet(`/playlists/${id}`) };
         if (stale()) return;
         // Not the user's: Spotify returns metadata only, but it can still be played as a context.
         if (!canReadItems(meta.body, get().userId)) {
@@ -436,7 +436,7 @@ export const usePlayer = create((set, get) => {
         { activeIndex: i, track: t, isPlaying: true, positionMs, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: null },
         // The whole list goes in as the queue, so Spotify's own next/shuffle/repeat work on it.
         () =>
-          spotifyApi.play({
+          player.play({
             device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
             uris: tracks.map((x) => x.uri),
             offset: { position: i },
@@ -461,34 +461,34 @@ export const usePlayer = create((set, get) => {
       s.sdkPlayer?.activateElement?.();
       if (!s.track) return s.resumePlayback();
       return s.isPlaying
-        ? command({ isPlaying: false, positionMs: currentPosition(s), positionAt: Date.now() }, () => spotifyApi.pause())
-        : command({ isPlaying: true, positionAt: Date.now() }, () => spotifyApi.play());
+        ? command({ isPlaying: false, positionMs: currentPosition(s), positionAt: Date.now() }, () => player.pause())
+        : command({ isPlaying: true, positionAt: Date.now() }, () => player.play());
     },
 
     next: () => {
       const s = get();
-      if (s.track) return command({}, () => spotifyApi.skipToNext());
+      if (s.track) return command({}, () => player.next());
       return s.status === "context" ? playContext() : s.playIndex(s.activeIndex + 1);
     },
     prev: () => {
       const s = get();
-      if (s.track) return command({}, () => spotifyApi.skipToPrevious());
+      if (s.track) return command({}, () => player.previous());
       return s.status === "context" ? playContext() : s.playIndex(s.activeIndex - 1);
     },
 
     // seekAt: the bar stays where the user put it until Spotify confirms (see reconcilePosition).
     seek: (ms) =>
-      command({ positionMs: ms, positionAt: Date.now(), seekAt: Date.now() }, () => spotifyApi.seek(Math.round(ms))),
+      command({ positionMs: ms, positionAt: Date.now(), seekAt: Date.now() }, () => player.seek(ms)),
     // volumeHoldUntil: like seek's hold, so a pre-change report doesn't flick the slider back.
     setVolume: (volume) =>
-      command({ volume, volumeHoldUntil: Date.now() + VOLUME_HOLD_MS }, () => spotifyApi.setVolume(Math.round(volume * 100))),
+      command({ volume, volumeHoldUntil: Date.now() + VOLUME_HOLD_MS }, () => player.volume(volume * 100)),
     toggleShuffle: () => {
       const shuffle = !get().shuffle;
-      return command({ shuffle }, () => spotifyApi.setShuffle(shuffle));
+      return command({ shuffle }, () => player.shuffle(shuffle));
     },
     cycleRepeat: () => {
       const repeat = nextRepeat(get().repeat);
-      return command({ repeat }, () => spotifyApi.setRepeat(repeat));
+      return command({ repeat }, () => player.repeat(repeat));
     },
 
     // Play tracks that aren't the selected collection (search results), as their own queue.
@@ -501,7 +501,7 @@ export const usePlayer = create((set, get) => {
       return command(
         { track: t, isPlaying: true, positionMs: 0, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: from },
         () =>
-          spotifyApi.play({
+          player.play({
             device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
             uris: list.map((x) => x.uri),
             offset: { position: i },
@@ -553,7 +553,7 @@ export const usePlayer = create((set, get) => {
       const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
       sdkPlayer?.activateElement?.();
       return command({ isPlaying: true, playingFrom: from }, () =>
-        spotifyApi.play({ device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: contextUri })
+        player.play({ device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: contextUri })
       );
     },
 
@@ -576,6 +576,33 @@ export const usePlayer = create((set, get) => {
       const lyricsOpen = !get().lyricsOpen;
       set({ lyricsOpen });
       writeUiState({ lyricsOpen });
+    },
+
+    // The lyrics settings panel stays open across reloads if it was left open.
+    lyricsSettingsOpen: readUiState().lyricsSettingsOpen ?? false,
+    toggleLyricsSettings: () => {
+      const lyricsSettingsOpen = !get().lyricsSettingsOpen;
+      set({ lyricsSettingsOpen });
+      writeUiState({ lyricsSettingsOpen });
+    },
+
+    // Full-screen ambient mode (components/ambient.jsx).
+    ambientOpen: false,
+    toggleAmbient: () => set((st) => ({ ambientOpen: !st.ambientOpen })),
+
+    // Desktop notification for each new song while the tab is in the background (usePlayback).
+    songNotifications: readUiState().songNotifications ?? false,
+    toggleSongNotifications: async () => {
+      if (get().songNotifications) {
+        set({ songNotifications: false });
+        return writeUiState({ songNotifications: false });
+      }
+      if (typeof Notification === "undefined") return set({ notice: "This browser can’t show notifications." });
+      const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== "granted")
+        return set({ notice: "Notifications are blocked for this site. Allow them in the browser’s site settings." });
+      set({ songNotifications: true, notice: "You’ll get a notification for each new song while Musify is in the background." });
+      writeUiState({ songNotifications: true });
     },
 
     // Where the playing music was started when it isn't the selected collection (artist page,
@@ -654,7 +681,7 @@ export const usePlayer = create((set, get) => {
 
     syncFromApi: async ({ force = false } = {}) => {
       const settling = () => !force && Date.now() - get().lastCommandAt < POLL_GRACE_MS;
-      if (!spotifyApi.getAccessToken() || settling()) return;
+      if (!spotifyAuth.getAccessToken() || settling()) return;
       try {
         // Playing in this tab: ask the SDK, not the Web API. It's free (no quota, no rate limit), so
         // it runs even while Spotify makes us wait. Both report the position as of the last state
@@ -675,7 +702,7 @@ export const usePlayer = create((set, get) => {
         // Nothing playing anywhere: poll a third as often.
         if (!force && !get().track && Date.now() - get().lastIdlePollAt < IDLE_POLL_MS) return;
         if (!get().track) set({ lastIdlePollAt: Date.now() });
-        const { body } = await spotifyApi.getMyCurrentPlaybackState();
+        const body = await player.state();
         if (settling()) return;
         if (!body?.device) return set({ track: null, contextUri: null, isPlaying: false, activeDeviceId: null });
         applyPlayback({
@@ -691,8 +718,6 @@ export const usePlayer = create((set, get) => {
             Date.now() > get().volumeHoldUntil && { volume: body.device.volume_percent / 100 }),
         });
       } catch (e) {
-        if (isQuotaError(e)) markQuotaExceeded("player", e.headers?.["retry-after"]);
-        else if (e?.statusCode === 429) backOff(e.headers?.["retry-after"]);
         console.warn("Playback state sync failed", e?.body ?? e);
       }
     },

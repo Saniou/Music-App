@@ -1,11 +1,16 @@
 import { useEffect } from "react";
 import { signIn, useSession } from "next-auth/react";
-import SpotifyWebApi from "spotify-web-api-node";
 
-// Browser-side client. It only ever needs the user's access token — no client
-// secret is exposed here. A single shared instance keeps the token in one place.
-export const spotifyApi = new SpotifyWebApi();
+// The user's access token for browser-side Web API calls (lib/api.js). No client secret here.
+let accessToken = null;
+export const spotifyAuth = {
+  setAccessToken: (token) => {
+    accessToken = token;
+  },
+  getAccessToken: () => accessToken,
+};
 
+// Keeps spotifyAuth's token in step with the NextAuth session.
 function useSpotify() {
   const { data: session } = useSession();
 
@@ -18,10 +23,8 @@ function useSpotify() {
       return;
     }
 
-    spotifyApi.setAccessToken(session.user.accessToken);
+    spotifyAuth.setAccessToken(session.user.accessToken);
   }, [session]);
-
-  return spotifyApi;
 }
 
 export default useSpotify;

@@ -10,6 +10,7 @@ export const SHORTCUTS = [
   [["↑", "↓"], "Volume up / down"],
   [["M"], "Mute / unmute"],
   [["L"], "Lyrics"],
+  [["F"], "Ambient mode (full screen)"],
   [["/"], "Search this playlist"],
   [["?"], "This help"],
   [["Esc"], "Close what's open"],

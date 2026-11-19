@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FiArrowLeft, FiExternalLink } from "react-icons/fi";
 import { BsPauseFill, BsPlayFill } from "react-icons/bs";

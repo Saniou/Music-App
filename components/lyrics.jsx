@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
@@ -9,7 +9,8 @@ import { usePlayer } from "@/store/player";
 import { coverUrl, currentPosition } from "@/lib/playback";
 import useCoverColors from "@/hooks/useCoverColors";
 import { activeLine, fetchLyrics, wordEnd } from "@/lib/lyrics";
-import { Loader } from "./equalizer";
+import Equalizer, { Loader } from "./equalizer";
+import { isJapanese, toRomaji } from "@/lib/romaji";
 
 // Text size per setting, for the side panel and for the phone's full screen.
 const SIZES = {
@@ -68,6 +69,7 @@ const SettingsButton = ({ open, onToggle }) => (
 const SettingsPanel = ({ open }) => {
   const settings = usePlayer((s) => s.lyricsSettings);
   const set = usePlayer((s) => s.setLyricsSetting);
+  const japanese = usePlayer((s) => s.lyricsJapanese); // set by LyricsBody for the song on screen
   const cell = "flex items-center justify-between gap-3 text-sm text-gray-200";
   return (
     <AnimatePresence initial={false}>
@@ -96,6 +98,22 @@ const SettingsPanel = ({ open }) => {
               Highlight from cover
               <Toggle label="Highlight colour from the cover" checked={settings.coverColor} onChange={(v) => set("coverColor", v)} />
             </div>
+            {/* Only for Japanese lyrics; the original script is the default. */}
+            {japanese && (
+              <div className={cell}>
+                Japanese
+                <Segmented
+                  label="Japanese lyrics"
+                  value={settings.script}
+                  onChange={(v) => set("script", v)}
+                  options={[
+                    ["original", "日本語"],
+                    ["romaji", "Romaji"],
+                    ["both", "Both"],
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -155,6 +173,36 @@ function bendLines(box) {
   }
 }
 
+// Romaji for the lines (and karaoke words) of `data`; null data = not wanted. The converter and its
+// dictionary load on first use (lib/romaji), so `ready` is false meanwhile and the original shows.
+function useRomaji(data, lines, plainLines) {
+  const [state, setState] = useState({ data: null, lines: [], words: [], error: false });
+  useEffect(() => {
+    if (!data) return;
+    let alive = true;
+    const lineTexts = lines ? lines.map((l) => l.text) : plainLines;
+    const wordTexts = lines ? lines.map((l) => (l.words ?? []).map((w) => w.text.trim())) : [];
+    (async () => {
+      const romajiLines = await toRomaji(lineTexts);
+      const flat = await toRomaji(wordTexts.flat());
+      let k = 0;
+      const romajiWords = wordTexts.map((ws) => ws.map(() => flat[k++]));
+      if (alive) setState({ data, lines: romajiLines, words: romajiWords, error: false });
+    })().catch(() => alive && setState({ data, lines: [], words: [], error: true }));
+    return () => {
+      alive = false;
+    };
+  }, [data, lines, plainLines]);
+  const fresh = !!data && state.data === data;
+  return {
+    ready: fresh && !state.error,
+    loading: !!data && !fresh,
+    error: fresh && state.error,
+    lines: state.lines,
+    words: state.words,
+  };
+}
+
 const LyricsBody = ({ track, wide }) => {
   const { data, error, loading } = useLyrics(track);
   const clock = usePlayer(
@@ -183,6 +231,15 @@ const LyricsBody = ({ track, wide }) => {
   const lines = data?.synced;
   const active = lines && playingThis ? activeLine(lines, currentPosition(clock)) : -1;
 
+  // Japanese lyrics can show as romaji, or both (romaji under each line); original by default.
+  const plainLines = useMemo(() => data?.plain?.split(/\r?\n/) ?? [], [data]);
+  const japanese = !!data && isJapanese(lines ? lines.map((l) => l.text) : plainLines);
+  useEffect(() => {
+    usePlayer.setState({ lyricsJapanese: japanese }); // the settings panel offers the switch only then
+  }, [japanese]);
+  const script = japanese ? settings.script : "original";
+  const romaji = useRomaji(script !== "original" ? data : null, lines, plainLines);
+
   const boxRef = useRef(null);
   const manualAt = useRef(0);
   const frame = useRef(0);
@@ -199,7 +256,7 @@ const LyricsBody = ({ track, wide }) => {
       observer.disconnect();
       cancelAnimationFrame(frame.current);
     };
-  }, [data, wide, settings.size, settings.align]);
+  }, [data, wide, settings.size, settings.align, script, romaji.ready]);
 
   const onScroll = () => {
     if (frame.current) return;
@@ -278,10 +335,15 @@ const LyricsBody = ({ track, wide }) => {
           ? // Karaoke: each word fills with the highlight as it's sung (painted per frame, see above).
             line.words.map((w, j) => (
               <span key={j} data-ws={w.timeMs} data-we={wordEnd(lines, i, j)} className="karaoke-word">
-                {w.text}
+                {script === "romaji" && romaji.ready
+                  ? `${romaji.words[i]?.[j] ?? w.text}${j < line.words.length - 1 ? " " : ""}`
+                  : w.text}
               </span>
             ))
-          : line.text || "♪"}
+          : (script === "romaji" && romaji.ready ? romaji.lines[i] : line.text) || "♪"}
+        {script === "both" && romaji.ready && romaji.lines[i] && romaji.lines[i] !== line.text && (
+          <span className="mt-1 block text-[0.62em] font-semibold leading-snug opacity-60">{romaji.lines[i]}</span>
+        )}
       </button>
     ));
   else
@@ -290,9 +352,12 @@ const LyricsBody = ({ track, wide }) => {
     content = (
       <>
         <p className="mb-6 text-center text-xs uppercase tracking-widest text-gray-400">Not synced · scroll to read</p>
-        {data.plain.split(/\r?\n/).map((line, i) => (
+        {plainLines.map((line, i) => (
           <p key={i} data-line={i} className={`break-words py-2 font-bold leading-snug text-white/80 ${text}`}>
-            {line || " "}
+            {(script === "romaji" && romaji.ready ? romaji.lines[i] : line) || " "}
+            {script === "both" && romaji.ready && romaji.lines[i] && romaji.lines[i] !== line && (
+              <span className="mt-1 block text-[0.62em] font-semibold leading-snug opacity-60">{romaji.lines[i]}</span>
+            )}
           </p>
         ))}
       </>
@@ -307,6 +372,11 @@ const LyricsBody = ({ track, wide }) => {
       style={{ "--hl": highlight }}
       className="scrollbar-hide relative h-full overflow-y-auto px-6 [mask-image:linear-gradient(transparent,black_18%,black_82%,transparent)]"
     >
+      {(romaji.loading || romaji.error) && (
+        <p className="sticky top-2 z-10 mx-auto flex w-max items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-gray-300 backdrop-blur">
+          {romaji.loading ? <><Equalizer className="h-3 w-3" /> Loading romaji…</> : "Couldn’t load romaji; showing the original."}
+        </p>
+      )}
       {/* Half-height spacers let the first and last lines reach the center. */}
       <div className="h-1/2" aria-hidden />
       {content}
@@ -323,7 +393,8 @@ export default function Lyrics({ track }) {
   const { toggleLyrics, togglePlay } = usePlayer.getState();
   const isPlaying = usePlayer((s) => s.isPlaying);
   const playingThis = usePlayer((s) => s.track?.uri === track?.uri);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = usePlayer((s) => s.lyricsSettingsOpen); // remembered (store)
+  const toggleSettings = usePlayer((s) => s.toggleLyricsSettings);
 
   useEffect(() => {
     if (!open) return;
@@ -361,7 +432,7 @@ export default function Lyrics({ track }) {
               style={{ width: panel }}
             >
               <div className="flex shrink-0 justify-end px-1">
-                <SettingsButton open={settingsOpen} onToggle={() => setSettingsOpen((v) => !v)} />
+                <SettingsButton open={settingsOpen} onToggle={toggleSettings} />
               </div>
               <SettingsPanel open={settingsOpen} />
               <div className="relative min-h-0 flex-1">
@@ -403,7 +474,7 @@ export default function Lyrics({ track }) {
               <p className="truncate text-sm font-semibold">{track?.name}</p>
               <p className="truncate text-xs text-gray-300">{track?.artists?.map((a) => a.name).join(", ")}</p>
             </div>
-            <SettingsButton open={settingsOpen} onToggle={() => setSettingsOpen((v) => !v)} />
+            <SettingsButton open={settingsOpen} onToggle={toggleSettings} />
             <button onClick={toggleLyrics} className="rounded-full p-2 text-gray-300 hover:bg-white/10 hover:text-white" aria-label="Close lyrics">
               <FiX className="h-5 w-5" />
             </button>

@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { FiChevronDown, FiLogOut } from "react-icons/fi";
-import { BsKeyboard } from "react-icons/bs";
+import { BsBell, BsKeyboard } from "react-icons/bs";
 import { usePlayer } from "@/store/player";
 
 const TopBar = () => {
   const { data: session } = useSession();
+  const notifyOn = usePlayer((s) => s.songNotifications);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -52,6 +53,16 @@ const TopBar = () => {
             <BsKeyboard className="h-4 w-4" />
             Keyboard shortcuts
             <kbd className="ml-auto rounded bg-white/10 px-1.5 text-[10px] text-gray-400">?</kbd>
+          </button>
+          <button
+            onClick={() => usePlayer.getState().toggleSongNotifications()}
+            role="switch"
+            aria-checked={notifyOn}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-200 transition-colors duration-200 hover:bg-white/10"
+          >
+            <BsBell className="h-4 w-4" />
+            Song notifications
+            <span className={`ml-auto h-2 w-2 rounded-full ${notifyOn ? "bg-spotify" : "bg-white/20"}`} aria-hidden />
           </button>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}

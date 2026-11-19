@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
+  BsArrowsFullscreen,
   BsLaptop,
   BsMoonStars,
   BsPhone,
@@ -339,6 +340,14 @@ const PlaybackBar = () => {
           <SleepTimer />
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={() => usePlayer.getState().toggleAmbient()}
+            aria-label="Ambient mode"
+            title="Ambient mode (F)"
+            className="p-2 transition-colors duration-200 hover:text-white"
+          >
+            <BsArrowsFullscreen className="h-4 w-4" />
+          </button>
           <PipButton />
           <DevicePicker />
           {/* Phones have volume buttons; the slider only crowds the row there. */}

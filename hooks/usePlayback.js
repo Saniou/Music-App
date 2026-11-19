@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { getSession } from "next-auth/react";
 import { usePlayer } from "@/store/player";
-import { currentPosition } from "@/lib/playback";
+import { coverUrl, currentPosition } from "@/lib/playback";
 
 const SDK_SRC = "https://sdk.scdn.co/spotify-player.js";
 const POLL_MS = 8000; // every request counts against the account-wide Dev Mode quota
@@ -95,6 +95,28 @@ export default function usePlayback() {
     const id = setTimeout(() => usePlayer.getState().syncFromApi({ force: true }), Math.max(0, ms));
     return () => clearTimeout(id);
   }, [sleepUri, sleepPlaying, sleepClock]);
+
+  // A notification per new song while the tab is hidden (opt-in, see toggleSongNotifications).
+  // One tag, so each replaces the last instead of piling up; silent, the music is the sound.
+  const notifyOn = usePlayer((s) => s.songNotifications);
+  useEffect(() => {
+    if (!notifyOn || !sleepUri || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (document.visibilityState === "visible") return;
+    const t = usePlayer.getState().track;
+    if (!t) return;
+    try {
+      const n = new Notification(t.name, {
+        body: [t.artists.map((a) => a.name).join(", "), t.album?.name].filter(Boolean).join(" · "),
+        icon: coverUrl(t.album?.images, 300) ?? undefined,
+        tag: "musify-now-playing",
+        silent: true,
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {} // some browsers only allow notifications from a service worker
+  }, [sleepUri, notifyOn]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;

@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     // Deezer reports errors as 200 + { error }; don't cache those for long.
     res.setHeader(
       "Cache-Control",
-      upstream.ok && !data?.error ? "public, s-maxage=86400, stale-while-revalidate=604800" : "public, s-maxage=60"
+      !upstream.ok || data?.error ? "public, s-maxage=60" : "public, s-maxage=86400, stale-while-revalidate=604800"
     );
     return res.status(upstream.ok ? 200 : 502).json(data);
   } catch {
