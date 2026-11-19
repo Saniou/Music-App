@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { FiArrowLeft } from "react-icons/fi";
 import { BsPauseFill, BsPlayFill } from "react-icons/bs";
-import { apiGet, qs } from "@/lib/api";
+import { apiGet, isRateLimited, qs } from "@/lib/api";
 import { coverUrl, explainError } from "@/lib/playback";
 import { usePlayer } from "@/store/player";
 
@@ -19,21 +19,42 @@ const SECTIONS = [
   ["appears_on", "Appears on"],
 ];
 
+// GET with a manual retry: `retry()` refetches after a failure. A null path fetches nothing yet.
 function useFetch(path) {
-  const [state, setState] = useState({ path: null, data: null, error: null });
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState({ id: null, data: null, error: null });
+  const id = path && `${path}#${attempt}`;
   useEffect(() => {
-    if (!path) return;
+    if (!id) return;
     let alive = true;
     apiGet(path).then(
-      (data) => alive && setState({ path, data, error: null }),
-      (error) => alive && setState({ path, data: null, error })
+      (data) => alive && setState({ id, data, error: null }),
+      (error) => alive && setState({ id, data: null, error })
     );
     return () => {
       alive = false;
     };
-  }, [path]);
-  const fresh = state.path === path;
-  return { data: fresh ? state.data : null, error: fresh ? state.error : null, loading: !!path && !fresh };
+  }, [id, path]);
+  const fresh = state.id === id;
+  return {
+    data: fresh ? state.data : null,
+    error: fresh ? state.error : null,
+    loading: !!id && !fresh,
+    retry: () => setAttempt((n) => n + 1),
+  };
+}
+
+// True once `ref` comes within `margin` of the viewport; stays true. Lets sections below the fold
+// wait for a scroll before spending requests.
+function useNearViewport(ref, eager) {
+  const [near, setNear] = useState(eager);
+  useEffect(() => {
+    if (near || !ref.current) return;
+    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && setNear(true), { rootMargin: "300px" });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [near, ref]);
+  return near;
 }
 
 const AlbumCard = ({ album, index }) => {
@@ -69,39 +90,51 @@ const albumsPath = (artistId, group, page) =>
 
 // Pages after the first: each fetches its 10 albums; the last one offers "More" while Spotify has more.
 const MorePage = ({ artistId, group, page, isLast, onMore }) => {
-  const { data, error, loading } = useFetch(albumsPath(artistId, group, page));
+  const fetched = useFetch(albumsPath(artistId, group, page));
   return (
     <>
-      {(data?.items ?? []).map((album, i) => (
+      {(fetched.data?.items ?? []).map((album, i) => (
         <AlbumCard key={album.id} album={album} index={i} />
       ))}
-      <MoreButton data={data} error={error} loading={loading} show={isLast} onMore={onMore} />
+      <MoreButton {...fetched} show={isLast} onMore={onMore} />
     </>
   );
 };
 
-const MoreButton = ({ data, error, loading, show, onMore }) =>
+const PILL =
+  "rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-white";
+
+const MoreButton = ({ data, error, loading, retry, show, onMore }) =>
   error ? (
-    <p className="col-span-full px-2 text-sm text-gray-400">{explainError(error)}</p>
+    <div className="col-span-full flex items-center gap-3 px-2 py-2">
+      <p className="text-sm text-gray-400">{explainError(error)}</p>
+      <button onClick={retry} className={PILL}>
+        Try again
+      </button>
+    </div>
   ) : loading ? (
-    <p className="col-span-full px-2 py-4 text-sm text-gray-500">Loading…</p>
+    <p className="col-span-full px-2 py-4 text-sm text-gray-500">
+      {/* While Spotify's rate limit runs out, say so instead of looking stuck. */}
+      {isRateLimited() ? "Waiting for Spotify…" : "Loading…"}
+    </p>
   ) : show && data?.next ? (
     <div className="col-span-full px-2 pt-2">
-      <button
-        onClick={onMore}
-        className="rounded-full bg-white/5 px-4 py-2 text-sm text-gray-300 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-white"
-      >
+      <button onClick={onMore} className={PILL}>
         More
       </button>
     </div>
   ) : null;
 
-// One discography section; hidden when the artist has nothing in it.
-const Section = ({ artistId, group, title }) => {
+// One discography section; hidden when the artist has nothing in it. Below-the-fold sections fetch
+// only when scrolled near, so opening an artist costs 2 requests (photo + albums), not 4.
+const Section = ({ artistId, group, title, eager = false }) => {
   const [pages, setPages] = useState(1);
-  const first = useFetch(albumsPath(artistId, group, 0));
-  if (!first.loading && !first.error && !first.data?.items?.length) return null;
+  const ref = useRef(null);
+  const near = useNearViewport(ref, eager);
+  const first = useFetch(near ? albumsPath(artistId, group, 0) : null);
+  if (near && !first.loading && !first.error && !first.data?.items?.length) return null;
   const more = () => setPages(pages + 1);
+  if (!near) return <div ref={ref} className="h-40" aria-hidden />; // placeholder the observer watches
   return (
     <section className="mt-10">
       <h2 className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">{title}</h2>
@@ -225,8 +258,8 @@ const Page = ({ artistId }) => {
 
       <main className="relative mx-auto max-w-6xl px-2 pb-28 sm:px-6">
         {error && <p className="px-2 pt-6 text-sm text-gray-400">{explainError(error)}</p>}
-        {SECTIONS.map(([group, title]) => (
-          <Section key={group} artistId={artistId} group={group} title={title} />
+        {SECTIONS.map(([group, title], i) => (
+          <Section key={group} artistId={artistId} group={group} title={title} eager={i === 0} />
         ))}
       </main>
 
