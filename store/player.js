@@ -151,6 +151,18 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // The one place player state lives. Spotify is the source of truth: commands update the UI
 // optimistically, then Web Playback SDK events and Web API polls confirm or correct it.
 export const usePlayer = create((set, get) => {
+  // The device to start playback on: the active one, else this tab's SDK player. On iPhone there is
+  // no SDK player, and an open-but-idle Spotify app isn't "active", so play would fail with no device:
+  // pick an available device instead, this phone first.
+  const deviceForPlay = async () => {
+    const { activeDeviceId, sdkDeviceId, sdkUnsupported } = get();
+    if (activeDeviceId || sdkDeviceId) return activeDeviceId ?? sdkDeviceId;
+    if (!sdkUnsupported) return undefined;
+    const { devices = [] } = (await apiGet("/me/player/devices").catch(() => null)) ?? {};
+    const usable = devices.filter((d) => d.id && !d.is_restricted);
+    return (usable.find((d) => d.type === "Smartphone") ?? usable[0])?.id;
+  };
+
   const command = async (optimistic, call) => {
     const before = get();
     set({ ...optimistic, lastCommandAt: Date.now() });
@@ -160,7 +172,12 @@ export const usePlayer = create((set, get) => {
     } catch (e) {
       console.error("Spotify command failed", e?.body ?? e);
       const rollback = Object.fromEntries(Object.keys(optimistic).map((k) => [k, before[k]]));
-      set({ ...rollback, notice: explainError(e) });
+      // On iPhone there is no in-browser player: the Spotify app has to be open to be the device.
+      const noDevice = e?.body?.error?.reason === "NO_ACTIVE_DEVICE" || e?.statusCode === 404;
+      set({
+        ...rollback,
+        notice: noDevice && get().sdkUnsupported ? "Open the Spotify app on this phone, start any song, then come back to Musify." : explainError(e),
+      });
     }
   };
 
@@ -276,8 +293,8 @@ export const usePlayer = create((set, get) => {
     const { playlist, activeDeviceId, sdkDeviceId, sdkPlayer } = get();
     if (!playlist?.uri) return;
     sdkPlayer?.activateElement?.();
-    const base = { device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: playlist.uri };
     return command({ isPlaying: true, playingFrom: null }, async () => {
+      const base = { device_id: await deviceForPlay(), context_uri: playlist.uri };
       if (!trackUri) return player.play(base);
       try {
         await player.play({ ...base, offset: { uri: trackUri }, position_ms: positionMs });
@@ -435,9 +452,9 @@ export const usePlayer = create((set, get) => {
       return command(
         { activeIndex: i, track: t, isPlaying: true, positionMs, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: null },
         // The whole list goes in as the queue, so Spotify's own next/shuffle/repeat work on it.
-        () =>
+        async () =>
           player.play({
-            device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
+            device_id: await deviceForPlay(),
             uris: tracks.map((x) => x.uri),
             offset: { position: i },
             position_ms: positionMs,
@@ -500,9 +517,9 @@ export const usePlayer = create((set, get) => {
       sdkPlayer?.activateElement?.();
       return command(
         { track: t, isPlaying: true, positionMs: 0, positionAt: Date.now(), durationMs: t.durationMs ?? 0, playingFrom: from },
-        () =>
+        async () =>
           player.play({
-            device_id: activeDeviceId ?? sdkDeviceId ?? undefined,
+            device_id: await deviceForPlay(),
             uris: list.map((x) => x.uri),
             offset: { position: i },
           })
@@ -552,8 +569,8 @@ export const usePlayer = create((set, get) => {
     playUri: (contextUri, from = null) => {
       const { activeDeviceId, sdkDeviceId, sdkPlayer } = get();
       sdkPlayer?.activateElement?.();
-      return command({ isPlaying: true, playingFrom: from }, () =>
-        player.play({ device_id: activeDeviceId ?? sdkDeviceId ?? undefined, context_uri: contextUri })
+      return command({ isPlaying: true, playingFrom: from }, async () =>
+        player.play({ device_id: await deviceForPlay(), context_uri: contextUri })
       );
     },
 

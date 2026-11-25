@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { FiChevronDown, FiLogOut } from "react-icons/fi";
 import { BsBell, BsKeyboard } from "react-icons/bs";
 import { usePlayer } from "@/store/player";
 
+const noSubscribe = () => () => {};
+
 const TopBar = () => {
   const { data: session } = useSession();
   const notifyOn = usePlayer((s) => s.songNotifications);
+  // iPhone Safari has no site notifications (only home-screen apps do): no menu item there.
+  const canNotify = useSyncExternalStore(noSubscribe, () => typeof Notification !== "undefined", () => false);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -42,7 +46,7 @@ const TopBar = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl bg-black/60 p-1.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
+        <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl bg-black/60 p-1.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel">
           <button
             onClick={() => {
               setOpen(false);
@@ -54,7 +58,7 @@ const TopBar = () => {
             Keyboard shortcuts
             <kbd className="ml-auto rounded bg-white/10 px-1.5 text-[10px] text-gray-400">?</kbd>
           </button>
-          <button
+          {canNotify && (<button
             onClick={() => usePlayer.getState().toggleSongNotifications()}
             role="switch"
             aria-checked={notifyOn}
@@ -63,7 +67,7 @@ const TopBar = () => {
             <BsBell className="h-4 w-4" />
             Song notifications
             <span className={`ml-auto h-2 w-2 rounded-full ${notifyOn ? "bg-spotify" : "bg-white/20"}`} aria-hidden />
-          </button>
+          </button>)}
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-200 transition-colors duration-200 hover:bg-white/10"

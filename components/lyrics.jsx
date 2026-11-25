@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
@@ -81,7 +81,7 @@ const SettingsPanel = ({ open }) => {
           transition={{ duration: 0.35, ease: EASE }}
           className="shrink-0 overflow-hidden"
         >
-          <div className="mx-2 mb-3 grid gap-3 rounded-2xl bg-black/70 p-3.5 shadow-xl ring-1 ring-white/10 backdrop-blur-2xl">
+          <div className="mx-2 mb-3 grid gap-3 rounded-2xl bg-black/70 p-3.5 shadow-xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel">
             <div className={cell}>
               Size
               <Segmented label="Text size" value={settings.size} onChange={(v) => set("size", v)} options={[["s", "S"], ["m", "M"], ["l", "L"]]} />
@@ -161,17 +161,62 @@ function useLyrics(track) {
 // A gently convex surface: the line at the box's center is full size and sharp; towards the edges
 // lines shrink, fade and soften, so scrolling feels like rolling a ball. No rotation: per-line 3D tilt
 // turned lines into skewed trapezoids. Written straight to the DOM on scroll, not through React state.
+// On touch devices the per-line blur is skipped: a filter on every line, every scroll frame, is what
+// made the lyrics stutter on phones; scale and fade alone keep the convex feel.
+const touchDevice = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
 function bendLines(box) {
   const half = box.clientHeight / 2;
   const mid = box.scrollTop + half;
+  const soften = !touchDevice();
   for (const el of box.querySelectorAll("[data-line]")) {
     const d = Math.min(1, Math.abs(el.offsetTop + el.offsetHeight / 2 - mid) / half); // 0 center .. 1 edge
     const k = d ** 1.5;
     el.style.transform = `scale(${1 - 0.22 * k})`;
     el.style.opacity = String(1 - 0.85 * k);
-    el.style.filter = d > 0.35 ? `blur(${((d - 0.35) * 3).toFixed(1)}px)` : "";
+    if (soften) el.style.filter = d > 0.35 ? `blur(${((d - 0.35) * 3).toFixed(1)}px)` : "";
   }
 }
+
+// The synced lines. Memoized: the lyrics body re-renders 4x a second for the clock, but the lines
+// only need to when the sung line (or a setting) changes; on a phone, re-rendering every line that
+// often was a real cost. No will-change per line either: dozens of compositor layers eat a phone's
+// memory, and the transforms update fine without them.
+const SyncedLines = memo(function SyncedLines({ lines, active, playingThis, text, wordByWord, script, romajiReady, romajiLines, romajiWords }) {
+  const seek = usePlayer((s) => s.seek);
+  return lines.map((line, i) => (
+    <button
+      key={`${line.timeMs}-${i}`}
+      data-line={i}
+      onClick={() => playingThis && seek(line.timeMs)}
+      disabled={!playingThis}
+      // Three distinct states so styles never blend: sung lines muted, upcoming lines faintest, the
+      // current line either white (line timing) or filling word by word (karaoke) with no glow,
+      // so unsung words don't look sung.
+      className={`block w-full break-words py-2.5 font-bold leading-snug ${text} ${
+        i === active
+          ? wordByWord && line.words?.length
+            ? ""
+            : "text-[color:var(--hl)] transition-colors duration-300 [text-shadow:0_0_24px_rgba(255,255,255,0.25)]"
+          : i < active
+          ? "text-white/45 transition-colors duration-300 hover:text-white/70"
+          : "text-white/25 transition-colors duration-300 hover:text-white/60"
+      } ${playingThis ? "cursor-pointer" : "cursor-default"}`}
+    >
+      {i === active && wordByWord && line.words?.length
+        ? // Karaoke: each word fills with the highlight as it's sung (painted per frame, see LyricsBody).
+          line.words.map((w, j) => (
+            <span key={j} data-ws={w.timeMs} data-we={wordEnd(lines, i, j)} className="karaoke-word">
+              {script === "romaji" && romajiReady ? `${romajiWords[i]?.[j] ?? w.text}${j < line.words.length - 1 ? " " : ""}` : w.text}
+            </span>
+          ))
+        : (script === "romaji" && romajiReady ? romajiLines[i] : line.text) || "♪"}
+      {script === "both" && romajiReady && romajiLines[i] && romajiLines[i] !== line.text && (
+        <span className="mt-1 block text-[0.62em] font-semibold leading-snug opacity-60">{romajiLines[i]}</span>
+      )}
+    </button>
+  ));
+});
 
 // Romaji for the lines (and karaoke words) of `data`; null data = not wanted. The converter and its
 // dictionary load on first use (lib/romaji), so `ready` is false meanwhile and the original shows.
@@ -312,40 +357,19 @@ const LyricsBody = ({ track, wide }) => {
   else if (!data) content = <p className="text-center text-gray-400">No lyrics found for this song.</p>;
   else if (data.instrumental) content = <p className="text-center text-2xl font-bold text-gray-300">♪ Instrumental ♪</p>;
   else if (lines)
-    content = lines.map((line, i) => (
-      <button
-        key={`${line.timeMs}-${i}`}
-        data-line={i}
-        onClick={() => playingThis && seek(line.timeMs)}
-        disabled={!playingThis}
-        // Three distinct states so styles never blend: sung lines muted, upcoming lines faintest, the
-        // current line either white (line timing) or filling word by word (karaoke) with no glow,
-        // so unsung words don't look sung.
-        className={`block w-full break-words py-2.5 font-bold leading-snug will-change-transform ${text} ${
-          i === active
-            ? settings.wordByWord && line.words?.length
-              ? ""
-              : "text-[color:var(--hl)] transition-colors duration-300 [text-shadow:0_0_24px_rgba(255,255,255,0.25)]"
-            : i < active
-            ? "text-white/45 transition-colors duration-300 hover:text-white/70"
-            : "text-white/25 transition-colors duration-300 hover:text-white/60"
-        } ${playingThis ? "cursor-pointer" : "cursor-default"}`}
-      >
-        {i === active && settings.wordByWord && line.words?.length
-          ? // Karaoke: each word fills with the highlight as it's sung (painted per frame, see above).
-            line.words.map((w, j) => (
-              <span key={j} data-ws={w.timeMs} data-we={wordEnd(lines, i, j)} className="karaoke-word">
-                {script === "romaji" && romaji.ready
-                  ? `${romaji.words[i]?.[j] ?? w.text}${j < line.words.length - 1 ? " " : ""}`
-                  : w.text}
-              </span>
-            ))
-          : (script === "romaji" && romaji.ready ? romaji.lines[i] : line.text) || "♪"}
-        {script === "both" && romaji.ready && romaji.lines[i] && romaji.lines[i] !== line.text && (
-          <span className="mt-1 block text-[0.62em] font-semibold leading-snug opacity-60">{romaji.lines[i]}</span>
-        )}
-      </button>
-    ));
+    content = (
+      <SyncedLines
+        lines={lines}
+        active={active}
+        playingThis={playingThis}
+        text={text}
+        wordByWord={settings.wordByWord}
+        script={script}
+        romajiReady={romaji.ready}
+        romajiLines={romaji.lines}
+        romajiWords={romaji.words}
+      />
+    );
   else
     // Only unsynced lyrics (LRCLIB has no timings for this song): line by line so the convex scroll
     // works per line, with a note saying why nothing follows the music.
@@ -464,12 +488,12 @@ export default function Lyrics({ track }) {
         >
           {cover && (
             <div
-              className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-40 blur-3xl saturate-150"
+              className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-40 blur-3xl saturate-150 cover-glow"
               style={{ backgroundImage: `url(${cover})` }}
             />
           )}
           <div className="absolute inset-0 bg-black/40" />
-          <header className="relative z-10 flex items-center gap-3 px-5 py-4">
+          <header className="relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{track?.name}</p>
               <p className="truncate text-xs text-gray-300">{track?.artists?.map((a) => a.name).join(", ")}</p>
@@ -485,7 +509,7 @@ export default function Lyrics({ track }) {
           <div className="relative z-10 min-h-0 flex-1">
             <LyricsBody track={track} wide={false} />
           </div>
-          <footer className="relative z-10 flex h-20 items-center justify-center">
+          <footer className="relative z-10 flex items-center justify-center pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
             {playingThis && (
               <button
                 onClick={togglePlay}

@@ -115,9 +115,9 @@ const NowPlaying = ({ track, isPlaying, onPlayPause, onNext, onPrev, hasNext, ha
         <AnimatePresence mode="popLayout">
           <motion.div
             key={track?.id ?? "empty"}
-            initial={{ opacity: 0, scale: 0.92, filter: "blur(8px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.96, filter: "blur(8px)" }}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }} // no blur: an animated filter on a big image is costly on phones
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="absolute inset-0 z-10 overflow-hidden rounded-2xl bg-elevated shadow-2xl ring-1 ring-white/10"
           >

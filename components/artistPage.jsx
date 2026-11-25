@@ -222,7 +222,7 @@ const About = ({ wiki }) =>
   wiki ? (
     <section className="mt-10 max-w-3xl">
       <SectionTitle>About</SectionTitle>
-      <div className="mx-2 rounded-[20px] bg-black/30 p-5 ring-1 ring-white/10 backdrop-blur-xl">
+      <div className="mx-2 rounded-[20px] bg-black/30 p-5 ring-1 ring-white/10 backdrop-blur-xl glass-panel">
         {wiki.description && <p className="mb-2 text-xs uppercase tracking-[0.18em] text-gray-400">{wiki.description}</p>}
         <p className="text-sm leading-relaxed text-gray-200">{wiki.extract}</p>
         {wiki.url && (
@@ -242,8 +242,8 @@ const MiniPlayer = () => {
   if (!track) return null;
   const cover = coverUrl(track.album?.images, 80);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-10 flex justify-center px-4">
-      <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-full bg-black/50 p-1.5 pr-2 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 flex justify-center px-4">
+      <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-full bg-black/50 p-1.5 pr-2 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl glass-panel">
         <button onClick={closeArtist} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Back to the player">
           {/* eslint-disable-next-line @next/next/no-img-element -- small Spotify CDN thumbnail */}
           {cover ? <img src={cover} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" /> : <span className="h-9 w-9 shrink-0 rounded-full bg-white/5" />}
@@ -288,12 +288,12 @@ const Page = ({ artistId }) => {
     >
       {/* Content is the colour: the artist photo tints the whole page. */}
       {image && (
-        <div className="pointer-events-none fixed inset-0 scale-110 bg-cover bg-center opacity-30 blur-3xl saturate-150" style={{ backgroundImage: `url(${image})` }} />
+        <div className="pointer-events-none fixed inset-0 scale-110 bg-cover bg-center opacity-30 blur-3xl saturate-150 cover-glow" style={{ backgroundImage: `url(${image})` }} />
       )}
 
       <button
         onClick={closeArtist}
-        className="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full bg-black/40 px-3 py-2 text-sm text-gray-200 ring-1 ring-white/10 backdrop-blur-xl transition-colors hover:bg-black/60 hover:text-white sm:left-6 sm:top-5"
+        className="fixed left-4 top-[max(1rem,env(safe-area-inset-top))] z-20 flex items-center gap-2 rounded-full bg-black/40 px-3 py-2 text-sm text-gray-200 ring-1 ring-white/10 backdrop-blur-xl glass-panel transition-colors hover:bg-black/60 hover:text-white sm:left-6 sm:top-[max(1.25rem,env(safe-area-inset-top))]"
         aria-label="Back"
       >
         <FiArrowLeft className="h-4 w-4" />
@@ -335,7 +335,7 @@ const Page = ({ artistId }) => {
         </div>
       </header>
 
-      <main className="relative mx-auto max-w-6xl px-2 pb-28 sm:px-6">
+      <main className="relative mx-auto max-w-6xl px-2 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:px-6">
         {bundle.loading ? (
           <Loader text="Loading artist…" className="pt-14" />
         ) : bundle.error ? (

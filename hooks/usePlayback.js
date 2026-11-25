@@ -9,8 +9,25 @@ const LISTEN_TICK_MS = 5000;
 
 // Wires the player store to the outside world: the Web Playback SDK (this tab as a Spotify
 // device), Web API polling (any other device) and the Media Session (OS media keys and card).
+// iPhone / iPad: Spotify's Web Playback SDK doesn't run in iOS browsers (iPadOS reports as a Mac, so
+// touch points tell it apart). There the music plays in the Spotify app and Musify remote-controls it.
+const isIOS = () =>
+  /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 export default function usePlayback() {
   useEffect(() => {
+    if (isIOS()) {
+      usePlayer.setState({ sdkUnsupported: true });
+      try {
+        if (!sessionStorage.getItem("musify:ios-hint")) {
+          sessionStorage.setItem("musify:ios-hint", "1");
+          usePlayer.setState({
+            notice: "On iPhone the music plays in the Spotify app; Musify controls it. If nothing plays, open Spotify once and start any song.",
+          });
+        }
+      } catch {} // no storage: just skip the hint
+      return;
+    }
     let player;
     const init = () => {
       player = new window.Spotify.Player({

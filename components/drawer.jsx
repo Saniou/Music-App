@@ -405,7 +405,7 @@ export default function Drawer() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3, ease: EASE }}
             onClick={closeDrawer}
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
+            className="fixed inset-0 z-40 bg-black/40"
             aria-hidden
           />
           <motion.aside
@@ -416,21 +416,21 @@ export default function Drawer() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: "105%", opacity: 0.6 }}
             transition={{ duration: 0.5, ease: EASE }}
-            className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden bg-black/45 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl sm:inset-y-3 sm:right-3 sm:w-[400px] sm:rounded-[20px]"
+            className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden bg-black/45 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel sm:inset-y-3 sm:right-3 sm:w-[400px] sm:rounded-[20px]"
           >
             {tint && (
               <div
-                className="pointer-events-none absolute -inset-10 bg-cover bg-center opacity-30 blur-3xl saturate-150"
+                className="pointer-events-none absolute -inset-10 bg-cover bg-center opacity-30 blur-3xl saturate-150 cover-glow"
                 style={{ backgroundImage: `url(${tint})` }}
               />
             )}
-            <header className="relative flex items-center gap-2 px-4 pb-2 pt-4">
+            <header className="relative flex items-center gap-2 px-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-4">
               <h2 className="flex-1 pb-1 font-script text-3xl font-bold leading-normal">{TITLES[drawer.view]}</h2>
               <button onClick={closeDrawer} className="rounded-full p-2 text-gray-300 transition-colors hover:bg-white/10 hover:text-white" aria-label="Close">
                 <FiX className="h-5 w-5" />
               </button>
             </header>
-            <div className="scroll-thin relative min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+            <div className="scroll-thin relative min-h-0 flex-1 overflow-y-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4">
               {drawer.view === "search" && <SearchView />}
               {drawer.view === "queue" && <QueueView />}
               {drawer.view === "stats" && <StatsView />}

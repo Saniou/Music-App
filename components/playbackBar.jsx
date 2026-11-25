@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   BsArrowsFullscreen,
@@ -201,7 +201,7 @@ const SleepTimer = () => {
         {sleep && <span className="text-[10px] font-semibold tabular-nums">{minutesLeft ? `${minutesLeft}m` : "♪"}</span>}
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-xl bg-black/60 p-2 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-xl bg-black/60 p-2 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel">
           <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Pause after</p>
           {SLEEP_OPTIONS.map(([value, label]) => (
             <button
@@ -258,6 +258,12 @@ const PipButton = () => {
     </button>
   );
 };
+
+// These take no props and change on their own: memo keeps them out of the bar's 4-per-second
+// re-render for the clock.
+const SleepTimerMemo = memo(SleepTimer);
+const PipButtonMemo = memo(PipButton);
+const DevicePickerMemo = memo(DevicePicker);
 
 const PlaybackBar = () => {
   const s = usePlayer(
@@ -337,7 +343,7 @@ const PlaybackBar = () => {
           >
             <TbMicrophone2 className="h-4 w-4" />
           </button>
-          <SleepTimer />
+          <SleepTimerMemo />
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <button
@@ -348,8 +354,8 @@ const PlaybackBar = () => {
           >
             <BsArrowsFullscreen className="h-4 w-4" />
           </button>
-          <PipButton />
-          <DevicePicker />
+          <PipButtonMemo />
+          <DevicePickerMemo />
           {/* Phones have volume buttons; the slider only crowds the row there. */}
           <VolumeIcon className="hidden h-4 w-4 sm:block" aria-hidden />
           <Slider

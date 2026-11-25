@@ -86,11 +86,11 @@ const PlaylistMenu = () => {
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.25, ease: EASE }}
             style={{ transformOrigin: "top left" }}
-            className="absolute left-0 top-12 flex max-h-[75vh] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] bg-black/45 shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl"
+            className="absolute left-0 top-12 flex max-h-[75vh] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] bg-black/45 shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel"
           >
             {tint && (
               <div
-                className="pointer-events-none absolute -inset-10 bg-cover bg-center opacity-25 blur-3xl saturate-150"
+                className="pointer-events-none absolute -inset-10 bg-cover bg-center opacity-25 blur-3xl saturate-150 cover-glow"
                 style={{ backgroundImage: `url(${tint})` }}
               />
             )}

@@ -63,6 +63,39 @@ function makeGlider(getEl) {
 
 // Dock-style tile: its size follows the cursor's distance, so neighbours grow a little too. It also
 // listens to scrollX, so tiles gliding under a still cursor resize as they pass.
+// The hovered tile's name. It lives outside the scroller (which clips), follows the tile while it
+// animates, and is clamped so it never runs off the first or last tile's edge. Its frame loop exists
+// only while it's mounted, i.e. while something is hovered.
+const HoverLabel = ({ tile, wrapRef, children }) => {
+  const ref = useRef(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  useAnimationFrame(() => {
+    const wrap = wrapRef.current;
+    const label = ref.current;
+    if (!tile || !wrap || !label) return;
+    const t = tile.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    const half = label.offsetWidth / 2;
+    const center = Math.min(Math.max(t.left + t.width / 2 - w.left, half + 4), w.width - half - 4);
+    x.set(center - half);
+    y.set(t.top - w.top - label.offsetHeight - 8);
+  });
+  return (
+    <motion.span
+      ref={ref}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      style={{ x, y }}
+      className="pointer-events-none absolute left-0 top-0 z-20 max-w-[240px] truncate whitespace-nowrap rounded-md bg-black px-2.5 py-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-white/10"
+    >
+      {children}
+    </motion.span>
+  );
+};
+
 const MagnifiedTile = ({ mouseX, scrollX, refCb, children, ...props }) => {
   const ref = useRef(null);
   const distance = useTransform([mouseX, scrollX], ([x]) => {
@@ -91,15 +124,13 @@ const MagnifiedTile = ({ mouseX, scrollX, refCb, children, ...props }) => {
 const Timeline = ({ items, activeIndex, onSelect }) => {
   const wrapRef = useRef(null);
   const scrollRef = useRef(null);
-  const labelRef = useRef(null);
   const itemRefs = useRef({}); // keyed by the track's index in the full playlist
   const drag = useRef(null);
   const suppressClick = useRef(false);
   const mouseX = useMotionValue(Infinity);
   const scrollX = useMotionValue(0);
-  const labelX = useMotionValue(0);
-  const labelY = useMotionValue(0);
   const [hovered, setHovered] = useState(null);
+  const [hoveredEl, setHoveredEl] = useState(null); // the hovered tile element, for its label to follow
   const canMagnify = useCanMagnify();
   // The glider is made once the scroller exists (an effect may read the DOM; render may not).
   const glider = useRef(null);
@@ -132,18 +163,8 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
 
   // The label lives outside the scroller (which clips), follows the hovered tile while it
   // animates, and is clamped so it never runs off the first or last tile's edge.
-  useAnimationFrame(() => {
-    const tile = hovered != null && itemRefs.current[hovered];
-    const wrap = wrapRef.current;
-    const label = labelRef.current;
-    if (!tile || !wrap || !label) return;
-    const t = tile.getBoundingClientRect();
-    const w = wrap.getBoundingClientRect();
-    const half = label.offsetWidth / 2;
-    const center = Math.min(Math.max(t.left + t.width / 2 - w.left, half + 4), w.width - half - 4);
-    labelX.set(center - half);
-    labelY.set(t.top - w.top - label.offsetHeight - 8);
-  });
+  // (The per-frame follow lives in HoverLabel, so it only runs while a label shows: a frame loop
+  // that never stops was a steady cost on phones, where nothing is ever hovered.)
 
   const onPointerDown = (e) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
@@ -181,22 +202,15 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
   }
 
   const hoveredTrack = items.find((x) => x.index === hovered)?.track;
+  const hoveredTile = hovered != null ? hoveredEl : null;
 
   return (
     <div ref={wrapRef} className="relative flex flex-col items-center gap-1">
       <AnimatePresence>
         {hoveredTrack && (
-          <motion.span
-            ref={labelRef}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{ x: labelX, y: labelY }}
-            className="pointer-events-none absolute left-0 top-0 z-20 max-w-[240px] truncate whitespace-nowrap rounded-md bg-black px-2.5 py-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-white/10"
-          >
+          <HoverLabel key="label" tile={hoveredTile} wrapRef={wrapRef}>
             {hoveredTrack.name}
-          </motion.span>
+          </HoverLabel>
         )}
       </AnimatePresence>
 
@@ -235,8 +249,14 @@ const Timeline = ({ items, activeIndex, onSelect }) => {
             const key = `${track.id}-${index}`;
             const tileProps = {
               onClick: () => onSelect(index),
-              onPointerEnter: () => setHovered(index),
-              onFocus: () => setHovered(index),
+              onPointerEnter: (e) => {
+                setHovered(index);
+                setHoveredEl(e.currentTarget);
+              },
+              onFocus: (e) => {
+                setHovered(index);
+                setHoveredEl(e.currentTarget);
+              },
               onBlur: () => setHovered(null),
               refCb: (el) => (itemRefs.current[index] = el),
               className: "group relative flex-shrink-0 snap-center outline-none",

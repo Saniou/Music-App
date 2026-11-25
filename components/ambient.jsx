@@ -184,7 +184,7 @@ const Scene = () => {
           >
             <motion.div
               {...drift(reduce, 60, 40, 1.12, 38)}
-              className="h-full w-full bg-cover bg-center blur-[90px] saturate-150"
+              className="cover-glow h-full w-full bg-cover bg-center blur-[90px] saturate-150"
               style={{ backgroundImage: `url(${cover})` }}
             />
           </motion.div>
@@ -192,12 +192,12 @@ const Scene = () => {
       </AnimatePresence>
       <motion.div
         {...drift(reduce, 140, 90, 1.25, 26)}
-        className="absolute left-[10%] top-[15%] h-[55vmax] w-[55vmax] rounded-full opacity-40 mix-blend-screen blur-[100px] transition-[background] duration-[2000ms]"
+        className="absolute left-[10%] top-[15%] h-[55vmax] w-[55vmax] rounded-full opacity-40 mix-blend-screen transition-[background] duration-[2000ms]"
         style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 65%)` }}
       />
       <motion.div
         {...drift(reduce, -120, 110, 1.18, 33)}
-        className="absolute bottom-[5%] right-[5%] h-[45vmax] w-[45vmax] rounded-full opacity-30 mix-blend-screen blur-[110px] transition-[background] duration-[2000ms]"
+        className="absolute bottom-[5%] right-[5%] h-[45vmax] w-[45vmax] rounded-full opacity-30 mix-blend-screen transition-[background] duration-[2000ms]"
         style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 60%)` }}
       />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.65)_100%)]" />
@@ -252,7 +252,7 @@ const Scene = () => {
       <motion.div
         animate={{ opacity: awake ? 1 : 0, y: awake ? 0 : 12 }}
         transition={{ duration: 0.4, ease: EASE }}
-        className={`absolute inset-x-0 bottom-8 flex items-center justify-center gap-4 ${awake ? "" : "pointer-events-none"}`}
+        className={`absolute inset-x-0 bottom-[max(2rem,env(safe-area-inset-bottom))] flex items-center justify-center gap-4 ${awake ? "" : "pointer-events-none"}`}
       >
         <button onClick={prev} aria-label="Previous" className="rounded-full p-3 text-white/80 hover:bg-white/10 hover:text-white">
           <TbPlayerTrackPrevFilled className="h-6 w-6" />
@@ -274,7 +274,7 @@ const Scene = () => {
         onClick={toggleAmbient}
         aria-label="Exit ambient mode"
         title="Exit (Esc)"
-        className={`absolute right-5 top-5 rounded-full bg-black/30 p-2.5 text-white/80 ring-1 ring-white/10 backdrop-blur hover:text-white ${awake ? "" : "pointer-events-none"}`}
+        className={`absolute right-5 top-[max(1.25rem,env(safe-area-inset-top))] rounded-full bg-black/30 p-2.5 text-white/80 ring-1 ring-white/10 backdrop-blur hover:text-white ${awake ? "" : "pointer-events-none"}`}
       >
         <FiMinimize2 className="h-5 w-5" />
       </motion.button>

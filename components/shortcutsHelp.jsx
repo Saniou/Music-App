@@ -39,7 +39,7 @@ export default function ShortcutsHelp() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={toggleHelp}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-label="Keyboard shortcuts"
         >
@@ -49,7 +49,7 @@ export default function ShortcutsHelp() {
             exit={{ opacity: 0, y: 12, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-[20px] bg-black/50 p-5 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl"
+            className="w-full max-w-sm rounded-[20px] bg-black/50 p-5 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel"
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-script text-2xl font-bold leading-normal">Shortcuts</h2>

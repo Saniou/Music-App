@@ -171,7 +171,7 @@ const Modal = ({ track, onClose }) => {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25, ease: EASE }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
       role="dialog"
       aria-label="Share card"
@@ -182,7 +182,7 @@ const Modal = ({ track, onClose }) => {
         exit={{ opacity: 0, y: 16, scale: 0.97 }}
         transition={{ duration: 0.35, ease: EASE }}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-sm rounded-[20px] bg-black/50 p-4 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl"
+        className="relative w-full max-w-sm rounded-[20px] bg-black/50 p-4 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl glass-panel"
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-script text-2xl font-bold leading-normal">Share</h2>

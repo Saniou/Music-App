@@ -116,7 +116,7 @@ const Experience = () => {
       <BackdropGlow url={backdrop} />
 
       {/* Phones: the title takes the space between the buttons. sm+: it floats dead center. */}
-      <header className="relative z-20 flex items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
+      <header className="relative z-20 flex items-center justify-between gap-3 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pb-5 sm:pt-[max(1.25rem,env(safe-area-inset-top))]">
         <PlaylistMenu />
         {/* px/py: room for script descenders and slant, which truncate would otherwise clip. */}
         <h1 className="pointer-events-none min-w-0 flex-1 truncate px-2 py-1 text-center font-script text-xl font-bold leading-normal sm:absolute sm:left-1/2 sm:max-w-[50vw] sm:-translate-x-1/2 sm:text-4xl">
@@ -129,7 +129,7 @@ const Experience = () => {
               onClick={() => usePlayer.getState().openDrawer(view)}
               aria-label={label}
               title={label}
-              className="rounded-full p-2 text-gray-300 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+              className="rounded-full p-2.5 text-gray-300 transition-colors duration-200 hover:bg-white/10 hover:text-white sm:p-2"
             >
               <Icon className="h-4 w-4" />
             </button>
@@ -191,7 +191,7 @@ const Experience = () => {
         </AnimatePresence>
       </main>
 
-      <footer className="relative z-10 pb-4 pt-2 sm:pb-8">
+      <footer className="relative z-10 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:pb-[max(2rem,env(safe-area-inset-bottom))]">
         {status === "context" && playingHere && (
           <PlayOnlyBadge found={tracks.length} total={total} />
         )}
@@ -355,7 +355,7 @@ const Notice = () => {
     return () => clearTimeout(id);
   }, [notice]);
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-20 z-40 flex justify-center px-4">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[calc(5rem+env(safe-area-inset-top))] z-40 flex justify-center px-4">
       {notice && (
         <p className="pointer-events-auto max-w-md animate-[toastIn_0.2s_cubic-bezier(0.22,1,0.36,1)] rounded-xl bg-elevated/90 px-4 py-3 text-sm text-gray-200 shadow-2xl ring-1 ring-white/10 backdrop-blur">
           {notice}
@@ -386,7 +386,7 @@ const BackdropGlow = ({ url }) => {
   return (
     <div
       key={url}
-      className="pointer-events-none absolute inset-0 z-0 animate-[fadeIn_1.2s_ease] bg-cover bg-center opacity-20 blur-3xl saturate-150"
+      className="pointer-events-none absolute inset-0 z-0 animate-[fadeIn_1.2s_ease] bg-cover bg-center opacity-20 blur-3xl saturate-150 cover-glow"
       style={{ backgroundImage: `url(${url})` }}
     />
   );
